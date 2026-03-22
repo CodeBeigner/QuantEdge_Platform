@@ -1,10 +1,15 @@
 spring:
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
-
   kafka:
-    enabled: false
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      group-id: quantedge-platform
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
   application.name: QuantPlatformApplication
   datasource:
     url: jdbc:postgresql://${DB_HOST}:5432/postgres
@@ -60,3 +65,7 @@ management:
   endpoint:
     health:
       show-details: always
+
+# Anthropic Claude AI configuration
+anthropic:
+  api-key: ${ANTHROPIC_API_KEY:}

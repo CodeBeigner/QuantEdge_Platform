@@ -31,6 +31,9 @@ public class ExecutionResponse {
     private double confidence;
     private Map<String, Object> metadata;
 
+    // Order placed (null when no order created)
+    private Long orderId;
+
     // Error info (null when success = true)
     private String error;
 

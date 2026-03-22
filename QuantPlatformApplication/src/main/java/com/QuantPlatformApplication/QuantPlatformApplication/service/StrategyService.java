@@ -1,6 +1,7 @@
 package com.QuantPlatformApplication.QuantPlatformApplication.service;
 
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.StrategyExecutor;
+import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.Action;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.ExecutionResult;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.MarketData;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.StrategyConfig;
@@ -8,6 +9,7 @@ import com.QuantPlatformApplication.QuantPlatformApplication.model.dto.Execution
 import com.QuantPlatformApplication.QuantPlatformApplication.model.dto.StrategyRequest;
 import com.QuantPlatformApplication.QuantPlatformApplication.model.dto.StrategyResponse;
 import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.MarketDataEntity;
+import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.Order;
 import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.Strategy;
 import com.QuantPlatformApplication.QuantPlatformApplication.repository.StrategyRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -28,9 +30,13 @@ import java.util.concurrent.CompletableFuture;
  * - The JPA persistence layer (StrategyRepository / Strategy entity)
  * - The execution engine (StrategyExecutor / StrategyConfig)
  * - The market data pipeline (MarketDataService / MarketDataEntity)
+ * - The order management layer (OrderManagementService)
  * 
  * Key responsibility: convert between DB entities and engine domain models
  * so each layer stays decoupled.
+ *
+ * BUG 2 FIX: Strategy decisions (BUY/SELL with confidence >= threshold) are
+ * now automatically converted to orders via OrderManagementService.
  */
 @Slf4j
 @Service
@@ -41,26 +47,38 @@ public class StrategyService {
     private final MarketDataService marketDataService;
     private final MacroDataService macroDataService;
     private final RegimeDetectionService regimeDetectionService;
+    private final OrderManagementService orderManagementService;
 
     /** How many trading days of data to load for strategy execution */
     private static final int DEFAULT_LOOKBACK_DAYS = 252;
+
+    /** Minimum confidence threshold to auto-place an order from a strategy decision */
+    private static final double MINIMUM_CONFIDENCE_THRESHOLD = 60.0;
 
     public StrategyService(StrategyRepository strategyRepository,
             StrategyExecutor strategyExecutor,
             MarketDataService marketDataService,
             MacroDataService macroDataService,
-            RegimeDetectionService regimeDetectionService) {
+            RegimeDetectionService regimeDetectionService,
+            OrderManagementService orderManagementService) {
         this.strategyRepository = strategyRepository;
         this.strategyExecutor = strategyExecutor;
         this.marketDataService = marketDataService;
         this.macroDataService = macroDataService;
         this.regimeDetectionService = regimeDetectionService;
+        this.orderManagementService = orderManagementService;
     }
 
     // ========================================================================
     // CRUD
     // ========================================================================
 
+    /**
+     * Create a new strategy from the given request.
+     *
+     * @param request strategy creation parameters
+     * @return the created strategy as a response DTO
+     */
     public StrategyResponse createStrategy(StrategyRequest request) {
         Strategy entity = Strategy.builder()
                 .name(request.getName())
@@ -76,17 +94,37 @@ public class StrategyService {
         return toResponse(saved);
     }
 
+    /**
+     * Get a strategy by its ID.
+     *
+     * @param id strategy ID
+     * @return strategy response DTO
+     * @throws IllegalArgumentException if not found
+     */
     public StrategyResponse getStrategy(Long id) {
         Strategy entity = findOrThrow(id);
         return toResponse(entity);
     }
 
+    /**
+     * List all strategies.
+     *
+     * @return list of all strategies as response DTOs
+     */
     public List<StrategyResponse> getAllStrategies() {
         return strategyRepository.findAll().stream()
                 .map(this::toResponse)
                 .toList();
     }
 
+    /**
+     * Update a strategy with the given request parameters.
+     *
+     * @param id      strategy ID to update
+     * @param request new strategy parameters
+     * @return updated strategy response DTO
+     * @throws IllegalArgumentException if not found
+     */
     public StrategyResponse updateStrategy(Long id, StrategyRequest request) {
         Strategy entity = findOrThrow(id);
 
@@ -103,6 +141,12 @@ public class StrategyService {
         return toResponse(saved);
     }
 
+    /**
+     * Delete a strategy by its ID.
+     *
+     * @param id strategy ID
+     * @throws IllegalArgumentException if not found
+     */
     public void deleteStrategy(Long id) {
         Strategy entity = findOrThrow(id);
         strategyRepository.delete(entity);
@@ -116,13 +160,19 @@ public class StrategyService {
     /**
      * Execute a strategy against real market data from the database.
      * 
-     * Flow:
-     * 1. Load strategy entity from DB
-     * 2. Fetch recent price data via MarketDataService
-     * 3. Convert DB entities → engine MarketData
-     * 4. Convert Strategy entity → engine StrategyConfig
-     * 5. Call StrategyExecutor.executeAsync() (runs on virtual thread)
-     * 6. Map result → ExecutionResponse DTO
+     * <p>Flow:
+     * <ol>
+     *   <li>Load strategy entity from DB</li>
+     *   <li>Fetch recent price data via MarketDataService</li>
+     *   <li>Convert DB entities → engine MarketData</li>
+     *   <li>Convert Strategy entity → engine StrategyConfig</li>
+     *   <li>Call StrategyExecutor.executeAsync() (runs on virtual thread)</li>
+     *   <li>Map result → ExecutionResponse DTO</li>
+     *   <li>(BUG 2 FIX) If BUY/SELL with confidence >= threshold → place order</li>
+     * </ol>
+     *
+     * @param id strategy ID to execute
+     * @return execution response DTO, including placed order ID if applicable
      */
     public ExecutionResponse executeStrategy(Long id) {
         Strategy entity = findOrThrow(id);
@@ -153,7 +203,35 @@ public class StrategyService {
             CompletableFuture<ExecutionResult> future = strategyExecutor.executeAsync(config, marketData);
             ExecutionResult result = future.join();
 
-            return toExecutionResponse(entity, result);
+            ExecutionResponse response = toExecutionResponse(entity, result);
+
+            // 5. BUG 2 FIX: Convert Decision → Order when conditions are met
+            if (result.isSuccess() && result.getDecision() != null) {
+                Action action = result.getDecision().action();
+                double confidence = result.getDecision().confidence();
+
+                if (action != Action.HOLD && confidence >= MINIMUM_CONFIDENCE_THRESHOLD) {
+                    try {
+                        Order placedOrder = orderManagementService.placeOrder(
+                                entity.getSymbol(),
+                                action.name(),
+                                "MARKET",
+                                result.getDecision().quantity(),
+                                null,
+                                entity.getId());
+                        response.setOrderId(placedOrder.getId());
+                        log.info("Strategy {} placed order: orderId={}, action={}, qty={}, confidence={}",
+                                id, placedOrder.getId(), action, result.getDecision().quantity(), confidence);
+                    } catch (Exception e) {
+                        log.error("Strategy {} failed to place order: {}", id, e.getMessage(), e);
+                    }
+                } else {
+                    log.info("Strategy {} decision not eligible for order: action={}, confidence={}",
+                            id, action, confidence);
+                }
+            }
+
+            return response;
         } catch (Exception e) {
             log.error("Strategy execution failed for id={}: {}", id, e.getMessage(), e);
             return ExecutionResponse.builder()

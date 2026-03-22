@@ -186,6 +186,30 @@ const ApiClient = {
         return res.json();
     },
 
+    async runWalkForward(strategyId) {
+        const res = await this._fetch(API_BASE + '/backtests/' + strategyId + '/walk-forward', {
+            method: 'POST',
+            headers: this._headers(),
+        });
+        return res.json();
+    },
+
+    // ── Signal Tracking ─────────────────────────────────────────
+
+    async getSignalIC(strategyId, window = 20) {
+        const res = await this._fetch(API_BASE + '/signals/ic/' + strategyId + '?window=' + window, {
+            headers: this._headers(),
+        });
+        return res.json();
+    },
+
+    async getSignalDrift(strategyId) {
+        const res = await this._fetch(API_BASE + '/signals/drift/' + strategyId, {
+            headers: this._headers(),
+        });
+        return res.json();
+    },
+
     // ── Agents ──────────────────────────────────────────────────
 
     async getAgents() {
@@ -216,6 +240,43 @@ const ApiClient = {
 
     async stopAgent(id) {
         const res = await this._fetch(API_BASE + '/agents/' + id + '/stop', {
+            method: 'POST',
+            headers: this._headers(),
+        });
+        return res.json();
+    },
+
+    async runAgentPipeline(id, symbol = 'SPY') {
+        const res = await this._fetch(API_BASE + '/agents/' + id + '/run-pipeline?symbol=' + symbol, {
+            method: 'POST',
+            headers: this._headers(),
+        });
+        return res.json();
+    },
+
+    async runAttribution(id, symbol = 'SPY') {
+        const res = await this._fetch(API_BASE + '/agents/' + id + '/attribution?symbol=' + symbol, {
+            method: 'POST',
+            headers: this._headers(),
+        });
+        return res.json();
+    },
+
+    async getAgentRoles() {
+        const res = await this._fetch(API_BASE + '/agents/roles', { headers: this._headers() });
+        return res.json();
+    },
+
+    async runSystemAudit(symbol = 'SPY') {
+        const res = await this._fetch(API_BASE + '/agents/system-audit?symbol=' + symbol, {
+            method: 'POST',
+            headers: this._headers(),
+        });
+        return res.json();
+    },
+
+    async runExecutionMonitor(symbol = 'SPY') {
+        const res = await this._fetch(API_BASE + '/agents/execution-monitor?symbol=' + symbol, {
             method: 'POST',
             headers: this._headers(),
         });

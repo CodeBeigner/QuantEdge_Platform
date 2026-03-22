@@ -1176,6 +1176,407 @@ const MLView = ({ symbols }) => {
     );
 };
 
+// ─── AI Intelligence View ────────────────────────────────────
+
+const AIIntelligenceView = ({ strategies }) => {
+    const [tab, setTab] = useState('roster');
+    const [agents, setAgents] = useState([]);
+    const [roles, setRoles] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [pipelineResult, setPipelineResult] = useState(null);
+    const [attrResult, setAttrResult] = useState(null);
+    const [icResults, setIcResults] = useState({});
+    const [driftResults, setDriftResults] = useState({});
+    const [runningPipeline, setRunningPipeline] = useState(null);
+    const [systemAuditResult, setSystemAuditResult] = useState(null);
+    const [execMonitorResult, setExecMonitorResult] = useState(null);
+    const [runningAudit, setRunningAudit] = useState(false);
+    const [runningMonitor, setRunningMonitor] = useState(false);
+
+    useEffect(() => {
+        Promise.all([
+            ApiClient.getAgents().catch(() => []),
+            ApiClient.getAgentRoles().catch(() => []),
+        ]).then(([a, r]) => {
+            setAgents(Array.isArray(a) ? a : []);
+            setRoles(Array.isArray(r) ? r : []);
+            setLoading(false);
+        });
+    }, []);
+
+    const runPipeline = async (agentId) => {
+        setRunningPipeline(agentId);
+        try {
+            const res = await ApiClient.runAgentPipeline(agentId);
+            setPipelineResult(res);
+        } catch (e) { setPipelineResult({ error: e.message }); }
+        setRunningPipeline(null);
+    };
+
+    const runAttribution = async (agentId) => {
+        try {
+            const res = await ApiClient.runAttribution(agentId);
+            setAttrResult(res);
+        } catch (e) { setAttrResult({ error: e.message }); }
+    };
+
+    const fetchIC = async (strategyId) => {
+        try {
+            const [ic, drift] = await Promise.all([
+                ApiClient.getSignalIC(strategyId, 20),
+                ApiClient.getSignalDrift(strategyId),
+            ]);
+            setIcResults(p => ({ ...p, [strategyId]: ic }));
+            setDriftResults(p => ({ ...p, [strategyId]: drift }));
+        } catch (e) { console.error(e); }
+    };
+
+    const runSystemAudit = async () => {
+        setRunningAudit(true);
+        try {
+            const res = await ApiClient.runSystemAudit();
+            setSystemAuditResult(res);
+        } catch (e) { setSystemAuditResult({ error: e.message }); }
+        setRunningAudit(false);
+    };
+
+    const runExecMonitor = async () => {
+        setRunningMonitor(true);
+        try {
+            const res = await ApiClient.runExecutionMonitor();
+            setExecMonitorResult(res);
+        } catch (e) { setExecMonitorResult({ error: e.message }); }
+        setRunningMonitor(false);
+    };
+
+    const tabs = [
+        { id: 'roster', label: '🤖 Agent Roster' },
+        { id: 'pipeline', label: '🔬 Pipeline' },
+        { id: 'ic', label: '📊 Signal IC' },
+        { id: 'attribution', label: '📈 Attribution' },
+        { id: 'sysaudit', label: '⚙️ System Audit' },
+        { id: 'execmon', label: '🛡️ Exec Monitor' },
+    ];
+
+    if (loading) return React.createElement('div', { className: 'loading-state' }, 'Loading AI Intelligence...');
+
+    return React.createElement('div', { className: 'animate-in' },
+        React.createElement('h2', null, '🧬 AI Agent Intelligence'),
+
+        // Tab selector
+        React.createElement('div', { className: 'symbol-selector', style: { marginBottom: 24 } },
+            tabs.map(t =>
+                React.createElement('button', {
+                    key: t.id,
+                    className: 'symbol-btn ' + (tab === t.id ? 'active' : ''),
+                    onClick: () => setTab(t.id)
+                }, t.label)
+            )
+        ),
+
+        // TAB: Roster
+        tab === 'roster' && React.createElement('div', null,
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' }, 'Available AI Roles'),
+                React.createElement('div', { className: 'data-grid' },
+                    roles.map(r =>
+                        React.createElement('div', { key: r.role, className: 'data-card' },
+                            React.createElement('div', { className: 'data-card-symbol' }, r.role.replace(/_/g, ' ')),
+                            React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-muted)' } },
+                                r.promptPreview)
+                        )
+                    )
+                )
+            ),
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' }, 'Agent Roster (' + agents.length + ' agents)'),
+                agents.length === 0
+                    ? React.createElement('div', { className: 'empty-state' }, 'No agents configured. Create agents from the Agents page.')
+                    : agents.map(a =>
+                        React.createElement('div', { key: a.id, className: 'strategy-card', style: { marginBottom: 12 } },
+                            React.createElement('div', { className: 'strategy-card-header' },
+                                React.createElement('span', { className: 'strategy-name' }, a.name),
+                                React.createElement('span', { className: 'strategy-badge' }, a.agentRole || 'N/A')
+                            ),
+                            React.createElement('div', { className: 'strategy-card-details' },
+                                React.createElement('span', null, 'Executions: ' + (a.totalExecutions || 0)),
+                                React.createElement('span', null, 'Success: ' + (a.successfulExecutions || 0)),
+                                React.createElement('span', null, 'Confidence: ' + (a.lastConfidence ? (a.lastConfidence * 100).toFixed(0) + '%' : '—')),
+                                React.createElement('span', {
+                                    className: 'agent-status ' + (a.active ? 'active' : 'inactive')
+                                }, a.active ? '● ACTIVE' : '● STOPPED')
+                            ),
+                            a.lastReasoning && React.createElement('div', {
+                                style: { fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 8, fontStyle: 'italic' }
+                            }, '"' + a.lastReasoning.substring(0, 200) + '..."')
+                        )
+                    )
+            )
+        ),
+
+        // TAB: Pipeline
+        tab === 'pipeline' && React.createElement('div', null,
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' }, '5-Stage Research Pipeline'),
+                React.createElement('div', { className: 'insight-box' },
+                    React.createElement('p', null,
+                        React.createElement('strong', null, 'Pipeline Stages: '),
+                        '1. Regime Analysis → 2. Quant Research → 3. Bias Audit → 4. Risk Analysis → 5. Psychology Check'
+                    )
+                ),
+                React.createElement('div', { className: 'data-grid', style: { marginTop: 16 } },
+                    agents.map(a =>
+                        React.createElement('div', { key: a.id, className: 'data-card' },
+                            React.createElement('div', { className: 'data-card-symbol' }, a.name),
+                            React.createElement('button', {
+                                className: 'btn-primary btn-small',
+                                disabled: runningPipeline === a.id,
+                                onClick: () => runPipeline(a.id),
+                                style: { marginTop: 8 }
+                            }, runningPipeline === a.id ? '⏳ Running...' : '▶ Run Pipeline')
+                        )
+                    )
+                )
+            ),
+            pipelineResult && React.createElement('div', { className: 'card', style: { marginTop: 16 } },
+                React.createElement('div', { className: 'card-header' }, 'Pipeline Result'),
+                pipelineResult.error
+                    ? React.createElement('div', { className: 'negative' }, pipelineResult.error)
+                    : React.createElement('div', null,
+                        React.createElement('div', { className: 'metrics-row' },
+                            React.createElement('div', { className: 'metric' },
+                                React.createElement('div', { className: 'metric-label' }, 'Status'),
+                                React.createElement('div', {
+                                    className: 'metric-value ' + (pipelineResult.pipeline_status === 'APPROVED' ? '' : 'negative')
+                                }, pipelineResult.pipeline_status || '—')
+                            ),
+                            React.createElement('div', { className: 'metric' },
+                                React.createElement('div', { className: 'metric-label' }, 'Final Decision'),
+                                React.createElement('div', { className: 'metric-value blue' }, pipelineResult.final_decision || '—')
+                            ),
+                            React.createElement('div', { className: 'metric' },
+                                React.createElement('div', { className: 'metric-label' }, 'Complete'),
+                                React.createElement('div', { className: 'metric-value' },
+                                    pipelineResult.pipeline_complete ? '✅ Yes' : '❌ No')
+                            )
+                        ),
+                        React.createElement('pre', {
+                            style: { background: '#0d1117', padding: 16, borderRadius: 8, fontSize: '0.8rem', overflow: 'auto', maxHeight: 300 }
+                        }, JSON.stringify(pipelineResult, null, 2))
+                    )
+            )
+        ),
+
+        // TAB: Signal IC
+        tab === 'ic' && React.createElement('div', null,
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' }, 'Signal Information Coefficient'),
+                React.createElement('div', { className: 'insight-box' },
+                    React.createElement('p', null,
+                        React.createElement('strong', null, 'IC measures signal quality: '),
+                        'Pearson correlation between predicted direction and actual returns. IC > 0.05 = strong, IC > 0.02 = moderate. Drift is detected when 20-day IC drops below 0.02.'
+                    )
+                ),
+                React.createElement('div', { className: 'data-grid', style: { marginTop: 16 } },
+                    strategies.map(s => {
+                        const ic = icResults[s.id];
+                        const drift = driftResults[s.id];
+                        return React.createElement('div', { key: s.id, className: 'data-card' },
+                            React.createElement('div', { className: 'data-card-symbol' }, s.name),
+                            ic && React.createElement('div', null,
+                                React.createElement('div', { className: 'metric-value ' + (Math.abs(ic.ic || 0) > 0.02 ? '' : 'negative') },
+                                    'IC: ' + (ic.ic || 0).toFixed(4)),
+                                React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-muted)' } },
+                                    'Window: ' + (ic.window || 20) + 'd')
+                            ),
+                            drift && React.createElement('div', {
+                                style: { marginTop: 4, fontSize: '0.8rem' }
+                            },
+                                React.createElement('span', {
+                                    className: drift.is_drifting ? 'negative' : ''
+                                }, drift.is_drifting ? '⚠ DRIFTING' : '✅ STABLE'),
+                                drift.alert_triggered && React.createElement('span', {
+                                    className: 'signal-badge sell', style: { marginLeft: 8 }
+                                }, 'ALERT')
+                            ),
+                            React.createElement('button', {
+                                className: 'btn-secondary btn-small',
+                                onClick: () => fetchIC(s.id),
+                                style: { marginTop: 8 }
+                            }, 'Compute IC')
+                        );
+                    })
+                )
+            )
+        ),
+
+        // TAB: Attribution
+        tab === 'attribution' && React.createElement('div', null,
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' }, 'P&L Attribution'),
+                React.createElement('div', { className: 'data-grid' },
+                    agents.map(a =>
+                        React.createElement('div', { key: a.id, className: 'data-card' },
+                            React.createElement('div', { className: 'data-card-symbol' }, a.name),
+                            React.createElement('button', {
+                                className: 'btn-secondary btn-small',
+                                onClick: () => runAttribution(a.id),
+                                style: { marginTop: 8 }
+                            }, '📊 Run Attribution')
+                        )
+                    )
+                )
+            ),
+            attrResult && React.createElement('div', { className: 'card', style: { marginTop: 16 } },
+                React.createElement('div', { className: 'card-header' }, 'Attribution Result'),
+                attrResult.error
+                    ? React.createElement('div', { className: 'negative' }, attrResult.error)
+                    : React.createElement('pre', {
+                        style: { background: '#0d1117', padding: 16, borderRadius: 8, fontSize: '0.8rem', overflow: 'auto', maxHeight: 300 }
+                    }, JSON.stringify(attrResult, null, 2))
+            )
+        ),
+
+        // TAB: System Audit
+        tab === 'sysaudit' && React.createElement('div', null,
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' }, '⚙️ HFT Systems Engineer Audit'),
+                React.createElement('div', { className: 'insight-box' },
+                    React.createElement('p', null,
+                        React.createElement('strong', null, 'Thinks like a principal engineer at Citadel/Jump Trading. '),
+                        'Analyzes architecture for latency bottlenecks, throughput limits, reliability gaps, and code quality. Provides prioritized optimizations with effort/impact/risk classification.'
+                    )
+                ),
+                React.createElement('button', {
+                    className: 'btn-primary',
+                    onClick: runSystemAudit,
+                    disabled: runningAudit,
+                    style: { marginTop: 16 }
+                }, runningAudit ? '⏳ Auditing system...' : '🔬 Run System Audit')
+            ),
+            systemAuditResult && React.createElement('div', { className: 'card', style: { marginTop: 16 } },
+                React.createElement('div', { className: 'card-header' }, 'Audit Result'),
+                systemAuditResult.error
+                    ? React.createElement('div', { className: 'negative' }, systemAuditResult.error)
+                    : React.createElement('div', null,
+                        React.createElement('div', { className: 'metrics-row' },
+                            React.createElement('div', { className: 'metric' },
+                                React.createElement('div', { className: 'metric-label' }, 'Health Score'),
+                                React.createElement('div', { className: 'metric-value ' + ((systemAuditResult.system_health_score || 0) >= 70 ? '' : 'negative') },
+                                    (systemAuditResult.system_health_score || 0) + '/100')
+                            ),
+                            React.createElement('div', { className: 'metric' },
+                                React.createElement('div', { className: 'metric-label' }, 'Assessment'),
+                                React.createElement('div', {
+                                    className: 'metric-value ' + (systemAuditResult.architecture_assessment === 'PRODUCTION_READY' ? '' : 'negative')
+                                }, (systemAuditResult.architecture_assessment || '—').replace(/_/g, ' '))
+                            ),
+                            systemAuditResult.production_readiness && React.createElement('div', { className: 'metric' },
+                                React.createElement('div', { className: 'metric-label' }, 'Prod Readiness'),
+                                React.createElement('div', { className: 'metric-value' },
+                                    (systemAuditResult.production_readiness.score || 0) + '/100')
+                            )
+                        ),
+                        systemAuditResult.latency_analysis && React.createElement('div', { className: 'card', style: { marginTop: 12 } },
+                            React.createElement('div', { className: 'card-header' }, '⏱ Latency Analysis'),
+                            React.createElement('div', { className: 'metrics-row' },
+                                React.createElement('div', { className: 'metric' },
+                                    React.createElement('div', { className: 'metric-label' }, 'Est. Order Latency'),
+                                    React.createElement('div', { className: 'metric-value' },
+                                        (systemAuditResult.latency_analysis.estimated_order_latency_ms || 0) + 'ms')
+                                ),
+                                React.createElement('div', { className: 'metric' },
+                                    React.createElement('div', { className: 'metric-label' }, 'Bottleneck'),
+                                    React.createElement('div', { className: 'metric-value negative' },
+                                        systemAuditResult.latency_analysis.bottleneck_component || '—')
+                                ),
+                                React.createElement('div', { className: 'metric' },
+                                    React.createElement('div', { className: 'metric-label' }, 'Improvement'),
+                                    React.createElement('div', { className: 'metric-value' },
+                                        (systemAuditResult.latency_analysis.improvement_potential_pct || 0) + '%')
+                                )
+                            )
+                        ),
+                        React.createElement('pre', {
+                            style: { background: '#0d1117', padding: 16, borderRadius: 8, fontSize: '0.8rem', overflow: 'auto', maxHeight: 400 }
+                        }, JSON.stringify(systemAuditResult, null, 2))
+                    )
+            )
+        ),
+
+        // TAB: Execution Monitor
+        tab === 'execmon' && React.createElement('div', null,
+            React.createElement('div', { className: 'card' },
+                React.createElement('div', { className: 'card-header' }, '🛡️ Execution Monitor'),
+                React.createElement('div', { className: 'insight-box' },
+                    React.createElement('p', null,
+                        React.createElement('strong', null, 'Real-time surveillance of all trading algorithms. '),
+                        'Detects anomalies (volume, price, frequency), monitors fill quality, tracks agent health, and enforces 5-level circuit breaker system (WARNING → THROTTLE → PAUSE → HALT → LIQUIDATE).'
+                    )
+                ),
+                React.createElement('button', {
+                    className: 'btn-primary',
+                    onClick: runExecMonitor,
+                    disabled: runningMonitor,
+                    style: { marginTop: 16 }
+                }, runningMonitor ? '⏳ Monitoring...' : '🔍 Run Execution Monitor')
+            ),
+            execMonitorResult && React.createElement('div', { className: 'card', style: { marginTop: 16 } },
+                React.createElement('div', { className: 'card-header' }, 'Monitor Result'),
+                execMonitorResult.error
+                    ? React.createElement('div', { className: 'negative' }, execMonitorResult.error)
+                    : React.createElement('div', null,
+                        React.createElement('div', { className: 'metrics-row' },
+                            React.createElement('div', { className: 'metric' },
+                                React.createElement('div', { className: 'metric-label' }, 'Status'),
+                                React.createElement('div', {
+                                    className: 'metric-value ' + (execMonitorResult.monitoring_status === 'ALL_CLEAR' ? '' : 'negative')
+                                }, execMonitorResult.monitoring_status || '—')
+                            ),
+                            React.createElement('div', { className: 'metric' },
+                                React.createElement('div', { className: 'metric-label' }, 'Circuit Breaker'),
+                                React.createElement('div', {
+                                    className: 'metric-value ' + ((execMonitorResult.circuit_breaker_level || 0) >= 3 ? 'negative' : '')
+                                }, 'Level ' + (execMonitorResult.circuit_breaker_level || 0))
+                            ),
+                            execMonitorResult.execution_quality && React.createElement('div', { className: 'metric' },
+                                React.createElement('div', { className: 'metric-label' }, 'Avg Slippage'),
+                                React.createElement('div', { className: 'metric-value' },
+                                    (execMonitorResult.execution_quality.avg_slippage_bps || 0).toFixed(1) + ' bps')
+                            ),
+                            execMonitorResult.execution_quality && React.createElement('div', { className: 'metric' },
+                                React.createElement('div', { className: 'metric-label' }, 'Fill Rate'),
+                                React.createElement('div', { className: 'metric-value' },
+                                    (execMonitorResult.execution_quality.fill_rate_pct || 0).toFixed(1) + '%')
+                            )
+                        ),
+                        execMonitorResult.anomalies_detected && execMonitorResult.anomalies_detected.length > 0 &&
+                            React.createElement('div', { className: 'card', style: { marginTop: 12 } },
+                                React.createElement('div', { className: 'card-header' }, '⚠️ Anomalies (' + execMonitorResult.anomalies_detected.length + ')'),
+                                React.createElement('div', { className: 'signal-list' },
+                                    execMonitorResult.anomalies_detected.map((a, i) =>
+                                        React.createElement('div', { key: i, className: 'signal-item' },
+                                            React.createElement('span', {
+                                                className: 'signal-badge ' + (a.severity === 'CRITICAL' ? 'sell' : 'hold')
+                                            }, a.severity),
+                                            React.createElement('span', { className: 'strategy-badge' }, a.type),
+                                            React.createElement('span', null, a.description),
+                                            React.createElement('span', {
+                                                style: { color: 'var(--accent-blue)', fontSize: '0.8rem' }
+                                            }, '→ ' + a.recommended_action)
+                                        )
+                                    )
+                                )
+                            ),
+                        React.createElement('pre', {
+                            style: { background: '#0d1117', padding: 16, borderRadius: 8, fontSize: '0.8rem', overflow: 'auto', maxHeight: 400 }
+                        }, JSON.stringify(execMonitorResult, null, 2))
+                    )
+            )
+        )
+    );
+};
+
 // ─── Alerts View ─────────────────────────────────────────────
 
 const AlertsView = () => {
@@ -1293,6 +1694,7 @@ const App = () => {
         { id: 'strategies', label: 'Strategies', icon: '⚡' },
         { id: 'backtest', label: 'Backtest', icon: '🔬' },
         { id: 'agents', label: 'Agents', icon: '🤖' },
+        { id: 'ai', label: 'AI Intel', icon: '🧬' },
         { id: 'orders', label: 'Orders', icon: '📋' },
         { id: 'risk', label: 'Risk', icon: '🛡️' },
         { id: 'ml', label: 'ML', icon: '🧠' },
@@ -1313,6 +1715,9 @@ const App = () => {
             break;
         case 'agents':
             content = React.createElement(AgentsView, { strategies });
+            break;
+        case 'ai':
+            content = React.createElement(AIIntelligenceView, { strategies });
             break;
         case 'orders':
             content = React.createElement(OrdersView, { symbols, strategies });

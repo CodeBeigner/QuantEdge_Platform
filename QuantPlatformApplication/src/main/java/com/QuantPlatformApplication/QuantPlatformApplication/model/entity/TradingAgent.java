@@ -5,6 +5,12 @@ import lombok.*;
 
 import java.time.Instant;
 
+/**
+ * JPA entity for trading agents mapped to the {@code trading_agents} table.
+ *
+ * <p>Stores agent configuration including scheduling, AI role assignment,
+ * system prompts, and execution statistics.
+ */
 @Entity
 @Table(name = "trading_agents")
 @Getter
@@ -42,4 +48,28 @@ public class TradingAgent {
     @Column(name = "updated_at", nullable = false)
     @Builder.Default
     private Instant updatedAt = Instant.now();
+
+    // ── AI Agent Layer Fields (V10 migration) ───────────────────────────
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "agent_role", length = 50)
+    @Builder.Default
+    private AgentRole agentRole = AgentRole.QUANT_RESEARCHER;
+
+    @Column(name = "system_prompt", columnDefinition = "TEXT")
+    private String systemPrompt;
+
+    @Column(name = "last_reasoning", columnDefinition = "TEXT")
+    private String lastReasoning;
+
+    @Column(name = "last_confidence")
+    private Double lastConfidence;
+
+    @Column(name = "total_executions")
+    @Builder.Default
+    private Integer totalExecutions = 0;
+
+    @Column(name = "successful_executions")
+    @Builder.Default
+    private Integer successfulExecutions = 0;
 }

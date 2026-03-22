@@ -7,6 +7,12 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
+/**
+ * JPA entity for backtest results mapped to the {@code backtest_results} table.
+ *
+ * <p>Stores per-backtest performance metrics including walk-forward validation
+ * results (V11 migration) and transaction cost tracking (BUG 3 fix).
+ */
 @Entity
 @Table(name = "backtest_results")
 @Getter
@@ -57,4 +63,22 @@ public class BacktestResult {
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();
+
+    // ── Walk-Forward fields (V11 migration) ──
+
+    @Column(name = "is_walk_forward_validated")
+    @Builder.Default
+    private Boolean isWalkForwardValidated = false;
+
+    @Column(name = "walk_forward_windows")
+    private Integer walkForwardWindows;
+
+    @Column(name = "walk_forward_mean_sharpe")
+    private BigDecimal walkForwardMeanSharpe;
+
+    @Column(name = "walk_forward_std_sharpe")
+    private BigDecimal walkForwardStdSharpe;
+
+    @Column(name = "transaction_costs")
+    private BigDecimal transactionCosts;
 }
