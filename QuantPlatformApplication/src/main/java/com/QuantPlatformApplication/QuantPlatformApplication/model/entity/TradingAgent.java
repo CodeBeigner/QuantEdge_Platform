@@ -62,7 +62,7 @@ public class TradingAgent {
     @Column(name = "last_reasoning", columnDefinition = "TEXT")
     private String lastReasoning;
 
-    @Column(name = "last_confidence")
+    @Column(name = "last_confidence", columnDefinition = "NUMERIC(10,4)")
     private Double lastConfidence;
 
     @Column(name = "total_executions")

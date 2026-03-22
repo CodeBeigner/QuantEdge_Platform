@@ -9,12 +9,12 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_DB: postgres
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "Walktorem@12"
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U quantuser -d quantdb"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 10s
       timeout: 5s
       retries: 5

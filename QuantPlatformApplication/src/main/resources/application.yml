@@ -13,8 +13,8 @@ spring:
   application.name: QuantPlatformApplication
   datasource:
     url: jdbc:postgresql://${DB_HOST}:5432/postgres
-    username: ${DB_USER}
-    password: ${DB_PASS}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASS:Walktorem@12}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
