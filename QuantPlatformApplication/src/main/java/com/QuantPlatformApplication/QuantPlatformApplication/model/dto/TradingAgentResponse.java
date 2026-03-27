@@ -29,6 +29,9 @@ public class TradingAgentResponse {
     private Integer totalExecutions;
     private Integer successfulExecutions;
 
+    // ── Lifecycle fields ──
+    private String lifecycleState;
+
     // ── Persona fields ──
     private String personaName;
     private String personaColor;

@@ -73,6 +73,12 @@ public class TradingAgent {
     @Builder.Default
     private Integer successfulExecutions = 0;
 
+    // ── Lifecycle Fields (V16 migration) ──────────────────────────────
+
+    @Column(name = "lifecycle_state", length = 30)
+    @Builder.Default
+    private String lifecycleState = "CREATED";
+
     // ── Persona Fields (V14 migration) ───────────────────────────────
 
     @Column(name = "persona_name", length = 100)

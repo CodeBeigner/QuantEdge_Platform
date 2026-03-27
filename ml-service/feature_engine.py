@@ -63,6 +63,12 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df['obv'] = obv
     df['obv_sma'] = obv.rolling(20).mean()
 
+    # ── VWAP ────────────────────────────────────────────────
+    df['vwap'] = (close * volume).cumsum() / volume.cumsum()
+
+    # ── Relative Volume ────────────────────────────────────
+    df['rel_volume'] = volume / volume.rolling(20).mean()
+
     # ── Price-based features ───────────────────────────────
     df['returns_1d'] = close.pct_change(1)
     df['returns_5d'] = close.pct_change(5)
@@ -78,6 +84,7 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
 FEATURE_COLS = [
     'rsi', 'macd', 'macd_signal', 'macd_hist',
     'bb_width', 'bb_pctb', 'sma_cross',
-    'atr_pct', 'returns_1d', 'returns_5d',
+    'atr_pct', 'obv', 'vwap', 'rel_volume',
+    'returns_1d', 'returns_5d',
     'returns_20d', 'volatility_20d',
 ]

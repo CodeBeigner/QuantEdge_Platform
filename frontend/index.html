@@ -1,41 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuantEdge — Firm OS</title>
-    <meta name="description"
-        content="QuantEdge Firm OS — AI-powered trading firm operating system. Manage your agents, execute strategies, and monitor risk.">
-
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link
-        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap"
-        rel="stylesheet">
-
-    <!-- Styles -->
-    <link rel="stylesheet" href="css/styles.css">
-
-    <!-- React (CDN) -->
-    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-    <script src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
-
-    <!-- Recharts (CDN) -->
-    <script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.js"></script>
-
-    <!-- WebSocket: SockJS + STOMP -->
-    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.6.1/dist/sockjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuantEdge — Firm OS</title>
+  <meta name="description" content="QuantEdge Firm OS — AI-powered trading firm operating system. Manage your agents, execute strategies, and monitor risk." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='url(%23g)'/><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop stop-color='%23adc6ff'/><stop offset='1' stop-color='%234d8eff'/></linearGradient></defs><text x='50' y='70' font-size='60' text-anchor='middle' fill='%23001a42' font-weight='bold' font-family='monospace'>Q</text></svg>" />
 </head>
-
 <body>
-    <div id="root"></div>
-
-    <!-- Application Scripts -->
-    <script src="js/api.js"></script>  <!-- API client -->
-    <script src="js/app.js"></script>  <!-- Root App + mount -->
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
-
 </html>

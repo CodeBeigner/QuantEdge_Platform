@@ -4,13 +4,17 @@ XGBoost + LSTM Signal Models — Predicts next-day return direction.
 - SignalModel: XGBoost classifier on technical indicators
 - LSTMSignalModel: LSTM neural network on price sequences
 """
+import os
+from datetime import datetime, timezone
+from typing import Optional
+
+import joblib
 import numpy as np
 import pandas as pd
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from feature_engine import compute_features, FEATURE_COLS
-from typing import Optional
 
 # ── Constants ────────────────────────────────────────────────
 MIN_TRAINING_SAMPLES = 100
@@ -37,6 +41,7 @@ class SignalModel:
         self.model: Optional[XGBClassifier] = None
         self.accuracy: float = 0.0
         self.is_trained: bool = False
+        self.trained_date: Optional[str] = None
 
     def train(self, df: pd.DataFrame) -> dict:
         """Train the model on OHLCV data.
@@ -72,6 +77,7 @@ class SignalModel:
         test_acc = accuracy_score(y_test, self.model.predict(X_test))
         self.accuracy = test_acc
         self.is_trained = True
+        self.trained_date = datetime.now(timezone.utc).isoformat()
 
         # Feature importance
         importance = dict(zip(FEATURE_COLS, self.model.feature_importances_.tolist()))
@@ -125,6 +131,134 @@ class SignalModel:
         }
 
 
+    def save_model(self, symbol: str, model_dir: str = 'models/') -> dict:
+        """Persist the trained XGBoost model and metadata to disk."""
+        if not self.is_trained or self.model is None:
+            return {"error": "Model not trained yet"}
+
+        os.makedirs(model_dir, exist_ok=True)
+        path = os.path.join(model_dir, f"{symbol}_xgb.joblib")
+        meta = {
+            "model": self.model,
+            "accuracy": self.accuracy,
+            "trained_date": self.trained_date,
+            "features": FEATURE_COLS,
+        }
+        joblib.dump(meta, path)
+        return {"status": "saved", "path": path, "symbol": symbol}
+
+    def load_model(self, symbol: str, model_dir: str = 'models/') -> dict:
+        """Load a previously saved XGBoost model from disk."""
+        path = os.path.join(model_dir, f"{symbol}_xgb.joblib")
+        if not os.path.exists(path):
+            return {"error": f"No saved model found at {path}"}
+
+        meta = joblib.load(path)
+        self.model = meta["model"]
+        self.accuracy = meta["accuracy"]
+        self.trained_date = meta.get("trained_date")
+        self.is_trained = True
+        return {"status": "loaded", "path": path, "symbol": symbol, "accuracy": self.accuracy}
+
+    def walk_forward_validate(self, df: pd.DataFrame, n_splits: int = 5) -> dict:
+        """Expanding-window time-series cross-validation.
+
+        Returns per-fold accuracy and signal-based Sharpe ratio.
+        """
+        featured = compute_features(df)
+        featured = featured.dropna(subset=FEATURE_COLS + ['target'])
+
+        if len(featured) < MIN_TRAINING_SAMPLES * 2:
+            return {"error": f"Not enough data for {n_splits}-fold walk-forward"}
+
+        X = featured[FEATURE_COLS].values
+        y = featured['target'].values
+        returns = featured['returns_1d'].values
+
+        n = len(X)
+        fold_size = n // (n_splits + 1)
+        results = []
+
+        for fold in range(n_splits):
+            train_end = fold_size * (fold + 2)
+            test_start = train_end
+            test_end = min(test_start + fold_size, n)
+
+            if test_end <= test_start:
+                break
+
+            X_train, y_train = X[:train_end], y[:train_end]
+            X_test, y_test = X[test_start:test_end], y[test_start:test_end]
+            fold_returns = returns[test_start:test_end]
+
+            clf = XGBClassifier(
+                n_estimators=XGBOOST_N_ESTIMATORS,
+                max_depth=XGBOOST_MAX_DEPTH,
+                learning_rate=XGBOOST_LEARNING_RATE,
+                subsample=XGBOOST_SUBSAMPLE,
+                colsample_bytree=XGBOOST_COLSAMPLE,
+                use_label_encoder=False,
+                eval_metric='logloss',
+                random_state=XGBOOST_RANDOM_STATE,
+            )
+            clf.fit(X_train, y_train)
+
+            preds = clf.predict(X_test)
+            acc = accuracy_score(y_test, preds)
+
+            # Signal-based Sharpe: go long when pred=1, short when pred=0
+            signal_returns = np.where(preds == 1, fold_returns, -fold_returns)
+            signal_returns = signal_returns[np.isfinite(signal_returns)]
+            sharpe = 0.0
+            if len(signal_returns) > 1 and np.std(signal_returns) > 0:
+                sharpe = float(np.mean(signal_returns) / np.std(signal_returns) * np.sqrt(252))
+
+            results.append({
+                "fold": fold + 1,
+                "train_size": len(X_train),
+                "test_size": len(X_test),
+                "accuracy": round(acc, 4),
+                "sharpe": round(sharpe, 4),
+            })
+
+        avg_acc = round(float(np.mean([r["accuracy"] for r in results])), 4)
+        avg_sharpe = round(float(np.mean([r["sharpe"] for r in results])), 4)
+
+        return {
+            "n_splits": len(results),
+            "folds": results,
+            "avg_accuracy": avg_acc,
+            "avg_sharpe": avg_sharpe,
+        }
+
+
+# ── LSTM Network (module-level for pickling) ─────────────────
+try:
+    import torch
+    import torch.nn as nn
+
+    class LSTMNet(nn.Module):
+        def __init__(self, input_size: int, hidden_size: int = LSTM_HIDDEN_SIZE,
+                     num_layers: int = LSTM_NUM_LAYERS):
+            super().__init__()
+            self.lstm = nn.LSTM(
+                input_size=input_size,
+                hidden_size=hidden_size,
+                num_layers=num_layers,
+                batch_first=True,
+                dropout=0.2,
+            )
+            self.fc = nn.Linear(hidden_size, 2)
+
+        def forward(self, x):
+            lstm_out, _ = self.lstm(x)
+            return self.fc(lstm_out[:, -1, :])
+
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
+
+
 class LSTMSignalModel:
     """LSTM neural network for time-series signal prediction.
 
@@ -137,18 +271,17 @@ class LSTMSignalModel:
         self.scaler = None
         self.accuracy: float = 0.0
         self.is_trained: bool = False
+        self.trained_date: Optional[str] = None
 
     def train(self, df: pd.DataFrame) -> dict:
         """Train the LSTM model on OHLCV data.
 
         Returns training metrics.
         """
-        try:
-            import torch
-            import torch.nn as nn
-            from sklearn.preprocessing import StandardScaler
-        except ImportError:
+        if not _TORCH_AVAILABLE:
             return {"error": "PyTorch not installed. Run: pip install torch"}
+
+        from sklearn.preprocessing import StandardScaler
 
         featured = compute_features(df)
         featured = featured.dropna(subset=FEATURE_COLS + ['target'])
@@ -180,25 +313,8 @@ class LSTMSignalModel:
 
         # Build LSTM
         input_size = len(FEATURE_COLS)
-
-        class LSTMNet(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.lstm = nn.LSTM(
-                    input_size=input_size,
-                    hidden_size=LSTM_HIDDEN_SIZE,
-                    num_layers=LSTM_NUM_LAYERS,
-                    batch_first=True,
-                    dropout=0.2,
-                )
-                self.fc = nn.Linear(LSTM_HIDDEN_SIZE, 2)
-
-            def forward(self, x):
-                lstm_out, _ = self.lstm(x)
-                return self.fc(lstm_out[:, -1, :])
-
-        model = LSTMNet()
-        criterion = nn.CrossEntropyLoss()
+        model = LSTMNet(input_size)
+        criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=LSTM_LEARNING_RATE)
 
         # Training loop
@@ -226,6 +342,7 @@ class LSTMSignalModel:
         self.model = model
         self.accuracy = test_acc
         self.is_trained = True
+        self.trained_date = datetime.now(timezone.utc).isoformat()
 
         return {
             "status": "trained",
@@ -245,9 +362,7 @@ class LSTMSignalModel:
         if not self.is_trained or self.model is None:
             return {"error": "LSTM model not trained yet"}
 
-        try:
-            import torch
-        except ImportError:
+        if not _TORCH_AVAILABLE:
             return {"error": "PyTorch not installed"}
 
         featured = compute_features(df)
@@ -282,3 +397,52 @@ class LSTMSignalModel:
             "model_type": "LSTM",
             "model_accuracy": self.accuracy,
         }
+
+    def save_model(self, symbol: str, model_dir: str = 'models/') -> dict:
+        """Persist the trained LSTM model, scaler, and metadata to disk."""
+        if not self.is_trained or self.model is None:
+            return {"error": "LSTM model not trained yet"}
+
+        os.makedirs(model_dir, exist_ok=True)
+        model_path = os.path.join(model_dir, f"{symbol}_lstm.pt")
+        scaler_path = os.path.join(model_dir, f"{symbol}_lstm_scaler.joblib")
+
+        torch.save({
+            "state_dict": self.model.state_dict(),
+            "input_size": self.model.lstm.input_size,
+            "hidden_size": self.model.lstm.hidden_size,
+            "num_layers": self.model.lstm.num_layers,
+            "accuracy": self.accuracy,
+            "trained_date": self.trained_date,
+        }, model_path)
+        joblib.dump(self.scaler, scaler_path)
+
+        return {"status": "saved", "model_path": model_path, "scaler_path": scaler_path, "symbol": symbol}
+
+    def load_model(self, symbol: str, model_dir: str = 'models/') -> dict:
+        """Load a previously saved LSTM model from disk."""
+        if not _TORCH_AVAILABLE:
+            return {"error": "PyTorch not installed"}
+
+        model_path = os.path.join(model_dir, f"{symbol}_lstm.pt")
+        scaler_path = os.path.join(model_dir, f"{symbol}_lstm_scaler.joblib")
+
+        if not os.path.exists(model_path) or not os.path.exists(scaler_path):
+            return {"error": f"No saved LSTM model found for {symbol}"}
+
+        checkpoint = torch.load(model_path, weights_only=False)
+        net = LSTMNet(
+            input_size=checkpoint["input_size"],
+            hidden_size=checkpoint["hidden_size"],
+            num_layers=checkpoint["num_layers"],
+        )
+        net.load_state_dict(checkpoint["state_dict"])
+        net.eval()
+
+        self.model = net
+        self.scaler = joblib.load(scaler_path)
+        self.accuracy = checkpoint["accuracy"]
+        self.trained_date = checkpoint.get("trained_date")
+        self.is_trained = True
+
+        return {"status": "loaded", "symbol": symbol, "accuracy": self.accuracy}

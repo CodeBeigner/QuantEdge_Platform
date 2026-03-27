@@ -309,6 +309,7 @@ public class AgentSchedulerService {
                 .lastConfidence(a.getLastConfidence())
                 .totalExecutions(a.getTotalExecutions())
                 .successfulExecutions(a.getSuccessfulExecutions())
+                .lifecycleState(a.getLifecycleState())
                 .personaName(a.getPersonaName())
                 .personaColor(a.getPersonaColor())
                 .personaInitials(a.getPersonaInitials())

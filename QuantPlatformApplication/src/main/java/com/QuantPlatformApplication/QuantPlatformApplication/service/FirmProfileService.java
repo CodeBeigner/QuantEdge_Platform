@@ -251,7 +251,42 @@ public class FirmProfileService {
                         "0 0 8 * * MON-FRI", COLOR_AMBER, "ZL")
             );
 
-            case CUSTOM -> List.of(); // No agents — user adds manually
+            case QUANT_FUND -> List.of(
+                new AgentSpawnSpec("Marcus K.", AgentRole.QUANT_RESEARCHER, 1L,
+                        "0 0 9 * * MON-FRI", COLOR_BLUE, "MK"),
+                new AgentSpawnSpec("Sofia R.", AgentRole.RISK_ANALYST, 1L,
+                        "0 30 9 * * MON-FRI", COLOR_RED, "SR"),
+                new AgentSpawnSpec("James P.", AgentRole.PORTFOLIO_CONSTRUCTOR, 2L,
+                        "0 0 10 * * MON-FRI", COLOR_GREEN, "JP"),
+                new AgentSpawnSpec("Anika N.", AgentRole.BIAS_AUDITOR, 1L,
+                        "0 0 16 * * MON-FRI", COLOR_PURPLE, "AN"),
+                new AgentSpawnSpec("Omar S.", AgentRole.MARKET_REGIME_ANALYST, 3L,
+                        "0 0 9 * * MON-FRI", COLOR_CYAN, "OS"),
+                new AgentSpawnSpec("Chen W.", AgentRole.PERFORMANCE_ATTRIBUTOR, 1L,
+                        "0 0 17 * * MON-FRI", COLOR_TEAL, "CW")
+            );
+
+            case ASSET_MANAGEMENT -> List.of(
+                new AgentSpawnSpec("James P.", AgentRole.PORTFOLIO_CONSTRUCTOR, 2L,
+                        "0 0 10 * * MON-FRI", COLOR_GREEN, "JP"),
+                new AgentSpawnSpec("Sofia R.", AgentRole.RISK_ANALYST, 1L,
+                        "0 30 9 * * MON-FRI", COLOR_RED, "SR"),
+                new AgentSpawnSpec("Chen W.", AgentRole.PERFORMANCE_ATTRIBUTOR, 1L,
+                        "0 0 17 * * MON-FRI", COLOR_TEAL, "CW"),
+                new AgentSpawnSpec("Anika N.", AgentRole.BIAS_AUDITOR, 1L,
+                        "0 0 16 * * MON-FRI", COLOR_PURPLE, "AN")
+            );
+
+            case RESEARCH_LAB -> List.of(
+                new AgentSpawnSpec("Marcus K.", AgentRole.QUANT_RESEARCHER, 1L,
+                        "0 0 9 * * MON-FRI", COLOR_BLUE, "MK"),
+                new AgentSpawnSpec("Isabel M.", AgentRole.MARKET_REGIME_ANALYST, 4L,
+                        "0 0 8 * * MON-FRI", COLOR_CYAN, "IM"),
+                new AgentSpawnSpec("Anika N.", AgentRole.BIAS_AUDITOR, 1L,
+                        "0 0 16 * * MON-FRI", COLOR_PURPLE, "AN")
+            );
+
+            case CUSTOM -> List.of();
         };
     }
 

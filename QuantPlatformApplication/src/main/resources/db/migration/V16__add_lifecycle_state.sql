@@ -1,0 +1,1 @@
+ALTER TABLE trading_agents ADD COLUMN IF NOT EXISTS lifecycle_state VARCHAR(30) DEFAULT 'CREATED';

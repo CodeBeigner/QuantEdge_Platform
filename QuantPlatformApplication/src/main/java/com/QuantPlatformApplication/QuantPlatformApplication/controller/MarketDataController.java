@@ -74,8 +74,7 @@ public class MarketDataController {
                     .map(this::toResponse)
                     .toList();
 
-            // Debug: return count first
-            return ResponseEntity.ok(Map.of("count", response.size(), "first", response.isEmpty() ? "none" : response.get(0).toString()));
+            return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

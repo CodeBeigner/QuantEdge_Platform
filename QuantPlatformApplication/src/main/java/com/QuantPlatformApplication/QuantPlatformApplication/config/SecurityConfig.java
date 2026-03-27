@@ -62,10 +62,14 @@ public class SecurityConfig {
                                 "/api/v1/backtests/**", // backtesting (public for dev)
                                 "/api/v1/agents/**", // trading agents (public for dev)
                                 "/api/v1/orders/**", // order management (public for dev)
+                                "/api/v1/broker/**", // broker adapters (public for dev)
                                 "/api/v1/risk/**", // risk engine (public for dev)
                                 "/api/v1/alerts/**", // alerts (public for dev)
                                 "/api/v1/ml/**", // ML service (public for dev)
                                 "/api/v1/firm/**", // firm management (public for dev)
+                                "/api/v1/market-hours/**", // market hours (public for dev)
+                                "/api/v1/agent-performance/**", // agent perf (public for dev)
+                                "/api/v1/signals/**", // signal tracking (public for dev)
                                 "/ws/**", // websocket
                                 "/actuator/**", // health checks + metrics
                                 "/error" // Spring error dispatch

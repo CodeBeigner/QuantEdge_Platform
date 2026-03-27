@@ -10,5 +10,8 @@ public enum FirmType {
     PROP_TRADING,
     GLOBAL_MACRO,
     MULTI_STRATEGY,
+    QUANT_FUND,
+    ASSET_MANAGEMENT,
+    RESEARCH_LAB,
     CUSTOM
 }

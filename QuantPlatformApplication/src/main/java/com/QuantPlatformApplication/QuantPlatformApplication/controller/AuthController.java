@@ -84,6 +84,7 @@ public class AuthController {
 
                 // 5. Return response
                 AuthResponse response = AuthResponse.builder()
+                                .id(user.getId())
                                 .token(token)
                                 .email(user.getEmail())
                                 .name(user.getName())
@@ -126,6 +127,7 @@ public class AuthController {
 
                         // 4. Return response
                         AuthResponse response = AuthResponse.builder()
+                                        .id(user.getId())
                                         .token(token)
                                         .email(user.getEmail())
                                         .name(user.getName())
