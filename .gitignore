@@ -32,3 +32,8 @@ venv/
 
 # Node
 node_modules/
+dist/
+
+# ML models (generated at runtime)
+ml-service/models/*.joblib
+ml-service/models/*.pt
