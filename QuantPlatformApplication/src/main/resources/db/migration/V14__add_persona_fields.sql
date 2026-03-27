@@ -1,0 +1,4 @@
+ALTER TABLE trading_agents
+  ADD COLUMN IF NOT EXISTS persona_name VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS persona_color VARCHAR(7),
+  ADD COLUMN IF NOT EXISTS persona_initials VARCHAR(3);

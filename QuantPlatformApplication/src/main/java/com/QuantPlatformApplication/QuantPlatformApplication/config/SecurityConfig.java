@@ -65,8 +65,10 @@ public class SecurityConfig {
                                 "/api/v1/risk/**", // risk engine (public for dev)
                                 "/api/v1/alerts/**", // alerts (public for dev)
                                 "/api/v1/ml/**", // ML service (public for dev)
+                                "/api/v1/firm/**", // firm management (public for dev)
                                 "/ws/**", // websocket
-                                "/actuator/**" // health checks + metrics
+                                "/actuator/**", // health checks + metrics
+                                "/error" // Spring error dispatch
                         ).permitAll()
 
                         // Everything else requires authentication

@@ -72,4 +72,15 @@ public class TradingAgent {
     @Column(name = "successful_executions")
     @Builder.Default
     private Integer successfulExecutions = 0;
+
+    // ── Persona Fields (V14 migration) ───────────────────────────────
+
+    @Column(name = "persona_name", length = 100)
+    private String personaName;
+
+    @Column(name = "persona_color", length = 7)
+    private String personaColor;
+
+    @Column(name = "persona_initials", length = 3)
+    private String personaInitials;
 }

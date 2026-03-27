@@ -1637,15 +1637,380 @@ const AlertsView = () => {
     );
 };
 
+// ================================================================
+// FIRM OS — Setup Wizard
+// ================================================================
+
+const FIRM_TYPES = [
+    { value: 'HEDGE_FUND', icon: '🏦', label: 'Hedge Fund', desc: 'Multi-strategy, long/short' },
+    { value: 'HFT', icon: '⚡', label: 'HFT Firm', desc: 'High-frequency, latency-focused' },
+    { value: 'PROP_TRADING', icon: '🎯', label: 'Prop Trading', desc: 'Proprietary capital, risk-first' },
+    { value: 'GLOBAL_MACRO', icon: '🌍', label: 'Global Macro', desc: 'Top-down macro strategies' },
+    { value: 'MULTI_STRATEGY', icon: '🔀', label: 'Multi-Strategy', desc: 'Diversified across all styles' },
+    { value: 'CUSTOM', icon: '🛠️', label: 'Custom', desc: 'Build your own from scratch' },
+];
+
+const FirmSetupWizard = ({ onComplete }) => {
+    const [step, setStep] = useState(0);
+    const [firmName, setFirmName] = useState('');
+    const [firmType, setFirmType] = useState('');
+    const [initialCapital, setInitialCapital] = useState(1000000);
+    const [riskAppetite, setRiskAppetite] = useState('MODERATE');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleSubmit = async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const firm = await ApiClient.setupFirm(firmName, firmType, initialCapital, riskAppetite);
+            onComplete(firm);
+        } catch (err) {
+            setError(err.message || 'Setup failed');
+        }
+        setLoading(false);
+    };
+
+    const renderStep = () => {
+        if (step === 0) {
+            return React.createElement('div', null,
+                React.createElement('div', { className: 'form-group', style: { marginBottom: 20 } },
+                    React.createElement('label', null, 'Firm Name'),
+                    React.createElement('input', {
+                        type: 'text', value: firmName,
+                        placeholder: 'e.g. Apex Capital Management',
+                        onChange: e => setFirmName(e.target.value),
+                        style: { fontSize: 16, padding: 14 }
+                    })
+                ),
+                React.createElement('div', { className: 'firm-type-grid' },
+                    FIRM_TYPES.map(ft =>
+                        React.createElement('div', {
+                            key: ft.value,
+                            className: 'firm-type-option ' + (firmType === ft.value ? 'selected' : ''),
+                            onClick: () => setFirmType(ft.value)
+                        },
+                            React.createElement('div', { className: 'firm-type-icon' }, ft.icon),
+                            React.createElement('div', { className: 'firm-type-label' }, ft.label),
+                            React.createElement('div', { className: 'firm-type-desc' }, ft.desc)
+                        )
+                    )
+                )
+            );
+        }
+        if (step === 1) {
+            return React.createElement('div', null,
+                React.createElement('div', { className: 'form-group', style: { marginBottom: 20 } },
+                    React.createElement('label', null, 'Initial Capital ($)'),
+                    React.createElement('input', {
+                        type: 'number', value: initialCapital,
+                        onChange: e => setInitialCapital(+e.target.value),
+                        style: { fontSize: 16, padding: 14 }
+                    })
+                ),
+                React.createElement('div', { className: 'form-group' },
+                    React.createElement('label', null, 'Risk Appetite'),
+                    React.createElement('select', {
+                        value: riskAppetite,
+                        onChange: e => setRiskAppetite(e.target.value),
+                        style: { fontSize: 14, padding: 12 }
+                    },
+                        ['CONSERVATIVE', 'MODERATE', 'AGGRESSIVE', 'VERY_AGGRESSIVE'].map(r =>
+                            React.createElement('option', { key: r, value: r }, r.replace('_', ' '))
+                        )
+                    )
+                )
+            );
+        }
+        // Step 2 — review
+        return React.createElement('div', null,
+            React.createElement('div', { className: 'card', style: { marginBottom: 16 } },
+                ['Firm Name: ' + firmName,
+                 'Type: ' + (FIRM_TYPES.find(f => f.value === firmType)?.label || firmType),
+                 'Capital: $' + initialCapital.toLocaleString(),
+                 'Risk: ' + riskAppetite.replace('_', ' ')
+                ].map((line, i) =>
+                    React.createElement('div', { key: i, style: { padding: '6px 0', fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-secondary)' } }, line)
+                )
+            ),
+            error && React.createElement('div', { className: 'auth-error' }, error)
+        );
+    };
+
+    return React.createElement('div', { className: 'wizard-backdrop' },
+        React.createElement('div', { className: 'wizard-container animate-in' },
+            React.createElement('div', { className: 'wizard-header' },
+                React.createElement('h1', null, '🚀 Launch Your Trading Firm'),
+                React.createElement('p', null, 'Configure your firm. AI agents will be spawned based on your firm type.')
+            ),
+            React.createElement('div', { className: 'wizard-steps' },
+                [0, 1, 2].map(i =>
+                    React.createElement('div', {
+                        key: i,
+                        className: 'wizard-step-dot ' + (i === step ? 'active' : i < step ? 'done' : '')
+                    })
+                )
+            ),
+            React.createElement('div', { className: 'wizard-body' }, renderStep()),
+            React.createElement('div', { className: 'wizard-actions' },
+                step > 0 && React.createElement('button', {
+                    className: 'wizard-btn-secondary', onClick: () => setStep(step - 1)
+                }, '← Back'),
+                step < 2
+                    ? React.createElement('button', {
+                        className: 'btn-primary',
+                        disabled: step === 0 && (!firmName || !firmType),
+                        onClick: () => setStep(step + 1)
+                    }, 'Next →')
+                    : React.createElement('button', {
+                        className: 'btn-primary', disabled: loading,
+                        onClick: handleSubmit
+                    }, loading ? 'Launching...' : '🚀 Launch Firm')
+            )
+        )
+    );
+};
+
+// ================================================================
+// FIRM OS — Top Bar
+// ================================================================
+
+const FirmTopBar = ({ firm, user, onLogout, onCeoCommand, ceoResponse, ceoLoading }) => {
+    const [cmd, setCmd] = useState('');
+    const handleCeo = () => {
+        if (!cmd.trim()) return;
+        onCeoCommand(cmd);
+        setCmd('');
+    };
+
+    return React.createElement('div', null,
+        React.createElement('header', { className: 'firm-topbar' },
+            React.createElement('div', { className: 'firm-brand' },
+                React.createElement('div', { className: 'firm-logo' }, (firm.firmName || 'Q')[0]),
+                React.createElement('div', null,
+                    React.createElement('div', { className: 'firm-name' }, firm.firmName || 'QuantEdge'),
+                    React.createElement('span', { className: 'firm-type-badge' }, (firm.firmType || '').replace('_', ' '))
+                )
+            ),
+            React.createElement('div', { className: 'ceo-command-bar' },
+                React.createElement('span', { style: { color: 'var(--text-muted)', fontSize: 14 } }, '💬'),
+                React.createElement('input', {
+                    placeholder: 'CEO command: "What is our risk exposure?" or "Run analysis on SPY"',
+                    value: cmd,
+                    onChange: e => setCmd(e.target.value),
+                    onKeyDown: e => e.key === 'Enter' && handleCeo()
+                }),
+                React.createElement('button', { onClick: handleCeo, disabled: ceoLoading },
+                    ceoLoading ? '...' : 'Send')
+            ),
+            React.createElement('div', { className: 'topbar-metrics' },
+                React.createElement('div', { className: 'topbar-metric' },
+                    React.createElement('div', { className: 'topbar-metric-label' }, 'Capital'),
+                    React.createElement('div', { className: 'topbar-metric-value' },
+                        '$' + (firm.initialCapital || 0).toLocaleString())
+                ),
+                React.createElement('div', { className: 'topbar-metric' },
+                    React.createElement('div', { className: 'topbar-metric-label' }, 'Risk'),
+                    React.createElement('div', { className: 'topbar-metric-value', style: { color: 'var(--accent-yellow)' } },
+                        (firm.riskAppetite || 'MODERATE').replace('_', ' '))
+                ),
+                React.createElement('span', { className: 'user-name' }, user?.name || user?.email || ''),
+                React.createElement('button', { className: 'btn-logout', onClick: onLogout }, 'Sign Out')
+            )
+        ),
+        ceoResponse && React.createElement('div', { className: 'ceo-response' },
+            React.createElement('div', { className: 'ceo-response-header' },
+                React.createElement('span', { className: 'ceo-response-name' }, ceoResponse.agentName || 'Agent'),
+                React.createElement('span', { className: 'ceo-response-role' }, ceoResponse.agentRole || '')
+            ),
+            React.createElement('div', { className: 'ceo-response-body' }, ceoResponse.reply || ceoResponse.response || '')
+        )
+    );
+};
+
+// ================================================================
+// FIRM OS — Agent Card
+// ================================================================
+
+const AgentCard = ({ agent, onTalk, onPipeline }) => {
+    const color = agent.personaColor || '#3b82f6';
+    const initials = agent.personaInitials || (agent.personaName || agent.name || 'AG').substring(0, 2).toUpperCase();
+    const statusText = agent.active ? 'Active' : 'Idle';
+    const statusClass = agent.active ? 'trading' : 'idle';
+
+    return React.createElement('div', {
+        className: 'agent-card',
+        style: { '--agent-color': color }
+    },
+        React.createElement('div', { className: 'agent-card-header' },
+            React.createElement('div', { className: 'agent-avatar', style: { background: color } }, initials),
+            React.createElement('div', null,
+                React.createElement('div', { className: 'agent-card-name' }, agent.personaName || agent.name),
+                React.createElement('div', { className: 'agent-card-role' },
+                    (agent.agentRole || 'RESEARCHER').replace(/_/g, ' ')
+                )
+            )
+        ),
+        React.createElement('div', { className: 'agent-card-status' },
+            React.createElement('span', { className: 'status-dot ' + statusClass }),
+            statusText,
+            agent.lastConfidence != null &&
+                React.createElement('span', { style: { marginLeft: 'auto', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 11 } },
+                    Math.round(agent.lastConfidence * 100) + '% conf'
+                )
+        ),
+        agent.lastConfidence != null && React.createElement('div', { className: 'confidence-bar' },
+            React.createElement('div', { className: 'confidence-track' },
+                React.createElement('div', {
+                    className: 'confidence-fill',
+                    style: {
+                        width: (agent.lastConfidence * 100) + '%',
+                        background: agent.lastConfidence > 0.7 ? 'var(--accent-green)' : agent.lastConfidence > 0.4 ? 'var(--accent-yellow)' : 'var(--accent-red)'
+                    }
+                })
+            ),
+            React.createElement('span', { className: 'confidence-label' }, Math.round(agent.lastConfidence * 100) + '%')
+        ),
+        React.createElement('div', { className: 'agent-card-actions' },
+            React.createElement('button', { className: 'btn-talk', onClick: () => onTalk(agent) }, '💬 Talk'),
+            React.createElement('button', { className: 'btn-pipeline', onClick: () => onPipeline(agent) }, '▶ Pipeline')
+        )
+    );
+};
+
+// ================================================================
+// FIRM OS — Agent Desk Drawer (slide-in chat panel)
+// ================================================================
+
+const AgentDeskDrawer = ({ agent, open, onClose }) => {
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState('');
+    const [loading, setLoading] = useState(false);
+    const bodyRef = useRef(null);
+
+    // Load history when agent changes
+    useEffect(() => {
+        if (!agent || !open) return;
+        ApiClient.getAgentConversation(agent.id)
+            .then(history => setMessages(Array.isArray(history) ? history : []))
+            .catch(() => setMessages([]));
+    }, [agent?.id, open]);
+
+    // Scroll to bottom
+    useEffect(() => {
+        if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }, [messages]);
+
+    const sendMessage = async () => {
+        if (!input.trim() || loading) return;
+        const userMsg = { role: 'user', content: input, createdAt: new Date().toISOString() };
+        setMessages(prev => [...prev, userMsg]);
+        setInput('');
+        setLoading(true);
+        try {
+            const res = await ApiClient.chatWithAgent(agent.id, input);
+            const agentMsg = { role: 'assistant', content: res.reply || res.response || 'No response', createdAt: new Date().toISOString() };
+            setMessages(prev => [...prev, agentMsg]);
+        } catch (err) {
+            setMessages(prev => [...prev, { role: 'assistant', content: '⚠ Error: ' + err.message, createdAt: new Date().toISOString() }]);
+        }
+        setLoading(false);
+    };
+
+    const color = agent?.personaColor || '#3b82f6';
+    const initials = agent?.personaInitials || 'AG';
+
+    return React.createElement('div', null,
+        React.createElement('div', {
+            className: 'desk-drawer-overlay ' + (open ? 'open' : ''),
+            onClick: onClose
+        }),
+        React.createElement('div', { className: 'desk-drawer ' + (open ? 'open' : '') },
+            React.createElement('div', { className: 'desk-drawer-header' },
+                React.createElement('div', { className: 'desk-drawer-title' },
+                    React.createElement('div', { className: 'agent-avatar', style: { background: color } }, initials),
+                    React.createElement('div', null,
+                        React.createElement('div', { className: 'desk-drawer-name' }, agent?.personaName || agent?.name || ''),
+                        React.createElement('div', { className: 'desk-drawer-role' },
+                            (agent?.agentRole || '').replace(/_/g, ' '))
+                    )
+                ),
+                React.createElement('button', { className: 'desk-drawer-close', onClick: onClose }, '✕')
+            ),
+            React.createElement('div', { className: 'desk-drawer-body', ref: bodyRef },
+                messages.length === 0 && React.createElement('div', {
+                    style: { textAlign: 'center', color: 'var(--text-muted)', padding: 40, fontFamily: 'var(--font-mono)', fontSize: 13 }
+                }, 'Start a conversation with ' + (agent?.personaName || 'this agent') + '...'),
+                messages.map((m, i) =>
+                    React.createElement('div', { key: i, className: 'chat-bubble ' + m.role },
+                        m.content,
+                        React.createElement('div', { className: 'chat-time' },
+                            new Date(m.createdAt).toLocaleTimeString())
+                    )
+                ),
+                loading && React.createElement('div', { style: { alignSelf: 'flex-start' } },
+                    React.createElement('span', { className: 'spinner' })
+                )
+            ),
+            React.createElement('div', { className: 'desk-drawer-input' },
+                React.createElement('input', {
+                    value: input,
+                    placeholder: 'Ask ' + (agent?.personaName || 'agent') + '...',
+                    onChange: e => setInput(e.target.value),
+                    onKeyDown: e => e.key === 'Enter' && sendMessage()
+                }),
+                React.createElement('button', { onClick: sendMessage, disabled: loading }, loading ? '...' : 'Send')
+            )
+        )
+    );
+};
+
+// ================================================================
+// FIRM OS — Trading Floor View
+// ================================================================
+
+const TradingFloor = ({ agents, onTalk, onPipeline }) => {
+    if (!agents || agents.length === 0) {
+        return React.createElement('div', { className: 'trading-floor' },
+            React.createElement('div', { style: { textAlign: 'center', width: '100%', paddingTop: 60 } },
+                React.createElement('div', { style: { fontSize: 48, marginBottom: 16 } }, '🤖'),
+                React.createElement('div', { style: { fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 14 } },
+                    'No agents deployed yet. Complete firm setup to spawn your team.')
+            )
+        );
+    }
+    return React.createElement('div', { className: 'trading-floor' },
+        React.createElement('div', { className: 'agent-grid' },
+            agents.map(a =>
+                React.createElement(AgentCard, {
+                    key: a.id, agent: a,
+                    onTalk: onTalk, onPipeline: onPipeline
+                })
+            )
+        )
+    );
+};
+
 // ─── Root App ────────────────────────────────────────────────
 
 const App = () => {
     const [user, setUser] = useState(ApiClient.getUser());
-    const [page, setPage] = useState('dashboard');
+    const [page, setPage] = useState('floor');
     const [strategies, setStrategies] = useState([]);
     const [symbols, setSymbols] = useState([]);
+    const [agents, setAgents] = useState([]);
+    const [firm, setFirm] = useState(null);
+    const [firmLoading, setFirmLoading] = useState(true);
     const [loading, setLoading] = useState(true);
     const { prices: livePrices, connected: wsConnected } = useWebSocket();
+
+    // Chat drawer state
+    const [drawerAgent, setDrawerAgent] = useState(null);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+
+    // CEO command state
+    const [ceoResponse, setCeoResponse] = useState(null);
+    const [ceoLoading, setCeoLoading] = useState(false);
 
     // Listen for auth expiration
     useEffect(() => {
@@ -1654,41 +2019,103 @@ const App = () => {
         return () => window.removeEventListener('auth:expired', handler);
     }, []);
 
+    // Load firm profile
+    const loadFirm = useCallback(async () => {
+        if (!user) return;
+        setFirmLoading(true);
+        try {
+            const f = await ApiClient.getFirm();
+            setFirm(f);
+        } catch {
+            setFirm(null);
+        }
+        setFirmLoading(false);
+    }, [user]);
+
     // Load data on login
     const loadData = useCallback(async () => {
         if (!user) return;
         setLoading(true);
         try {
-            const [strats, syms] = await Promise.all([
+            const [strats, syms, agentData] = await Promise.all([
                 ApiClient.getStrategies(),
                 ApiClient.getSymbols(),
+                ApiClient.getAgents().catch(() => []),
             ]);
             setStrategies(strats);
             setSymbols(syms.length > 0 ? syms : ['SPY', 'AAPL', 'QQQ']);
+            setAgents(Array.isArray(agentData) ? agentData : []);
         } catch (err) {
             console.error('Load error:', err);
         }
         setLoading(false);
     }, [user]);
 
+    useEffect(() => { loadFirm(); }, [loadFirm]);
     useEffect(() => { loadData(); }, [loadData]);
 
     const handleLogout = () => {
         ApiClient.logout();
         setUser(null);
+        setFirm(null);
+    };
+
+    const handleFirmSetup = (newFirm) => {
+        setFirm(newFirm);
+        loadData(); // agents will now exist from spawn
+    };
+
+    const handleTalk = (agent) => {
+        setDrawerAgent(agent);
+        setDrawerOpen(true);
+    };
+
+    const handleCloseDrawer = () => {
+        setDrawerOpen(false);
+    };
+
+    const handlePipeline = async (agent) => {
+        try {
+            await ApiClient.runPipeline(agent.id, 'SPY');
+            alert('Pipeline started for ' + (agent.personaName || agent.name));
+        } catch (err) {
+            alert('Pipeline error: ' + err.message);
+        }
+    };
+
+    const handleCeoCommand = async (msg) => {
+        setCeoLoading(true);
+        setCeoResponse(null);
+        try {
+            const res = await ApiClient.ceoBroadcast(msg);
+            setCeoResponse(res);
+        } catch (err) {
+            setCeoResponse({ agentName: 'System', reply: '⚠ Error: ' + err.message });
+        }
+        setCeoLoading(false);
     };
 
     // Not logged in → show auth
     if (!user) return React.createElement(AuthScreen, { onLogin: setUser });
 
-    // Loading
-    if (loading) return React.createElement('div', { className: 'loading-fullscreen' },
+    // Loading firm check
+    if (firmLoading) return React.createElement('div', { className: 'loading-fullscreen' },
         React.createElement('div', { className: 'logo pulse' }, 'Q'),
         React.createElement('div', { style: { marginTop: 16, color: 'var(--text-muted)' } }, 'Loading QuantEdge...')
     );
 
-    // Nav items
+    // No firm → show setup wizard
+    if (!firm) return React.createElement(FirmSetupWizard, { onComplete: handleFirmSetup });
+
+    // Loading data
+    if (loading) return React.createElement('div', { className: 'loading-fullscreen' },
+        React.createElement('div', { className: 'logo pulse' }, 'Q'),
+        React.createElement('div', { style: { marginTop: 16, color: 'var(--text-muted)' } }, 'Initializing ' + firm.firmName + '...')
+    );
+
+    // Nav items — Firm OS tabs
     const navItems = [
+        { id: 'floor', label: 'Trading Floor', icon: '🏢' },
         { id: 'dashboard', label: 'Dashboard', icon: '◉' },
         { id: 'market', label: 'Market', icon: '📈' },
         { id: 'strategies', label: 'Strategies', icon: '⚡' },
@@ -1704,69 +2131,83 @@ const App = () => {
     // Page content
     let content;
     switch (page) {
+        case 'floor':
+            content = React.createElement(TradingFloor, {
+                agents, onTalk: handleTalk, onPipeline: handlePipeline
+            });
+            break;
         case 'market':
-            content = React.createElement(MarketDataView, { symbols });
+            content = React.createElement('div', { className: 'main-content' },
+                React.createElement(MarketDataView, { symbols }));
             break;
         case 'strategies':
-            content = React.createElement(StrategiesView, { strategies, onRefresh: loadData });
+            content = React.createElement('div', { className: 'main-content' },
+                React.createElement(StrategiesView, { strategies, onRefresh: loadData }));
             break;
         case 'backtest':
-            content = React.createElement(BacktestView, { strategies });
+            content = React.createElement('div', { className: 'main-content' },
+                React.createElement(BacktestView, { strategies }));
             break;
         case 'agents':
-            content = React.createElement(AgentsView, { strategies });
+            content = React.createElement('div', { className: 'main-content' },
+                React.createElement(AgentsView, { strategies }));
             break;
         case 'ai':
-            content = React.createElement(AIIntelligenceView, { strategies });
+            content = React.createElement('div', { className: 'main-content' },
+                React.createElement(AIIntelligenceView, { strategies }));
             break;
         case 'orders':
-            content = React.createElement(OrdersView, { symbols, strategies });
+            content = React.createElement('div', { className: 'main-content' },
+                React.createElement(OrdersView, { symbols, strategies }));
             break;
         case 'risk':
-            content = React.createElement(RiskView, { symbols });
+            content = React.createElement('div', { className: 'main-content' },
+                React.createElement(RiskView, { symbols }));
             break;
         case 'ml':
-            content = React.createElement(MLView, { symbols });
+            content = React.createElement('div', { className: 'main-content' },
+                React.createElement(MLView, { symbols }));
             break;
         case 'alerts':
-            content = React.createElement(AlertsView);
+            content = React.createElement('div', { className: 'main-content' },
+                React.createElement(AlertsView));
             break;
         default:
-            content = React.createElement(DashboardView, { strategies, symbols });
+            content = React.createElement('div', { className: 'main-content' },
+                React.createElement(DashboardView, { strategies, symbols }));
     }
 
     return React.createElement('div', { className: 'app-layout' },
-        // Header
-        React.createElement('header', { className: 'header' },
-            React.createElement('div', { className: 'header-brand' },
-                React.createElement('div', { className: 'logo pulse' }, 'Q'),
-                React.createElement('div', null,
-                    React.createElement('div', { className: 'header-title' }, 'QuantEdge'),
-                    React.createElement('div', { className: 'header-subtitle' }, 'AI-Driven Trading Platform')
-                )
-            ),
-            React.createElement('div', { className: 'header-user' },
-                React.createElement('span', { className: 'user-name' }, user.name || user.email),
-                React.createElement('button', { className: 'btn-logout', onClick: handleLogout }, 'Sign Out')
-            )
-        ),
+        // Firm OS Top Bar
+        React.createElement(FirmTopBar, {
+            firm, user, onLogout: handleLogout,
+            onCeoCommand: handleCeoCommand,
+            ceoResponse, ceoLoading
+        }),
 
         // Live Ticker
         React.createElement(LiveTickerStrip, { prices: livePrices, connected: wsConnected }),
 
         // Navigation
-        React.createElement('nav', { className: 'main-nav' },
+        React.createElement('nav', { className: 'firm-nav' },
             navItems.map(n =>
                 React.createElement('button', {
                     key: n.id,
-                    className: 'nav-item ' + (page === n.id ? 'active' : ''),
+                    className: 'firm-nav-item ' + (page === n.id ? 'active' : ''),
                     onClick: () => setPage(n.id)
                 }, React.createElement('span', { className: 'nav-icon' }, n.icon), ' ', n.label)
             )
         ),
 
         // Content
-        React.createElement('main', { className: 'main-content' }, content)
+        content,
+
+        // Agent Desk Drawer
+        React.createElement(AgentDeskDrawer, {
+            agent: drawerAgent,
+            open: drawerOpen,
+            onClose: handleCloseDrawer
+        })
     );
 };
 
@@ -1775,3 +2216,4 @@ const App = () => {
 // ================================================================
 
 ReactDOM.render(React.createElement(App), document.getElementById('root'));
+

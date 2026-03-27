@@ -35,6 +35,7 @@ public class AgentSchedulerService {
     private final StrategyService strategyService;
     private final RiskEngineService riskEngineService;
     private final TaskScheduler taskScheduler;
+    private final AgentStatusBroadcastService statusBroadcast;
 
     /** Tracks running agent futures for start/stop control */
     private final Map<Long, ScheduledFuture<?>> runningAgents = new ConcurrentHashMap<>();
@@ -46,12 +47,14 @@ public class AgentSchedulerService {
             StrategyRepository strategyRepository,
             StrategyService strategyService,
             RiskEngineService riskEngineService,
-            TaskScheduler taskScheduler) {
+            TaskScheduler taskScheduler,
+            AgentStatusBroadcastService statusBroadcast) {
         this.agentRepository = agentRepository;
         this.strategyRepository = strategyRepository;
         this.strategyService = strategyService;
         this.riskEngineService = riskEngineService;
         this.taskScheduler = taskScheduler;
+        this.statusBroadcast = statusBroadcast;
     }
 
     // ── CRUD ─────────────────────────────────────────────────────────────
@@ -191,13 +194,22 @@ public class AgentSchedulerService {
      * @param agent the trading agent performing this tick
      */
     private void executeAgentTick(TradingAgent agent) {
+        String personaName = agent.getPersonaName() != null ? agent.getPersonaName() : agent.getName();
+        String role = agent.getAgentRole() != null ? agent.getAgentRole().name() : "QUANT_RESEARCHER";
+
         try {
+            // Broadcast: agent is starting research
+            statusBroadcast.broadcastAgentStatus(agent.getId(), personaName,
+                    role, "RESEARCHING", "Executing strategy tick...", null);
+
             // ── Risk Gate: check position limits ──
             Map<String, Object> positionCheck = riskEngineService.checkPositionLimits();
             boolean allClear = Boolean.TRUE.equals(positionCheck.get("allClear"));
             if (!allClear) {
                 log.warn("Agent {} tick ABORTED: position limits breached. Details: {}",
                         agent.getId(), positionCheck.get("breaches"));
+                statusBroadcast.broadcastAgentStatus(agent.getId(), personaName,
+                        role, "ALERT", "Position limits breached — tick aborted", null);
                 return;
             }
 
@@ -209,6 +221,8 @@ public class AgentSchedulerService {
                 if (varBreached) {
                     log.warn("Agent {} tick ABORTED: VaR breach for symbol={}. VaR95={}%, maxDrawdown={}%",
                             agent.getId(), symbol, varCheck.get("var95"), varCheck.get("maxDrawdown"));
+                    statusBroadcast.broadcastAgentStatus(agent.getId(), personaName,
+                            role, "ALERT", "VaR breach for " + symbol + " — tick aborted", null);
                     return;
                 }
             }
@@ -229,8 +243,14 @@ public class AgentSchedulerService {
             agent.setLastRunAt(Instant.now());
             agent.setUpdatedAt(Instant.now());
             agentRepository.save(agent);
+
+            // Broadcast: agent is idle again
+            statusBroadcast.broadcastAgentStatus(agent.getId(), personaName,
+                    role, "IDLE", "Completed: " + result.getAction(), agent.getLastConfidence());
         } catch (Exception e) {
             log.error("Agent {} execution failed: {}", agent.getId(), e.getMessage(), e);
+            statusBroadcast.broadcastAgentStatus(agent.getId(), personaName,
+                    role, "ALERT", "Execution error: " + e.getMessage(), null);
         }
     }
 
@@ -289,6 +309,9 @@ public class AgentSchedulerService {
                 .lastConfidence(a.getLastConfidence())
                 .totalExecutions(a.getTotalExecutions())
                 .successfulExecutions(a.getSuccessfulExecutions())
+                .personaName(a.getPersonaName())
+                .personaColor(a.getPersonaColor())
+                .personaInitials(a.getPersonaInitials())
                 .build();
     }
 }

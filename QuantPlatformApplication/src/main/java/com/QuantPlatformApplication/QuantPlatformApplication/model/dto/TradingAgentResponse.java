@@ -28,4 +28,9 @@ public class TradingAgentResponse {
     private Double lastConfidence;
     private Integer totalExecutions;
     private Integer successfulExecutions;
+
+    // ── Persona fields ──
+    private String personaName;
+    private String personaColor;
+    private String personaInitials;
 }

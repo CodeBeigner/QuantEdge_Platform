@@ -3,31 +3,42 @@ package com.QuantPlatformApplication.QuantPlatformApplication.controller;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.agent.AgentSystemPrompts;
 import com.QuantPlatformApplication.QuantPlatformApplication.model.dto.TradingAgentRequest;
 import com.QuantPlatformApplication.QuantPlatformApplication.model.dto.TradingAgentResponse;
+import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.AgentConversation;
 import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.AgentRole;
+import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.TradingAgent;
+import com.QuantPlatformApplication.QuantPlatformApplication.repository.TradingAgentRepository;
+import com.QuantPlatformApplication.QuantPlatformApplication.service.AgentConversationService;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.AgentPipelineService;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.AgentSchedulerService;
+import com.QuantPlatformApplication.QuantPlatformApplication.service.ClaudeAgentService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * REST controller for trading agent CRUD, start/stop, and AI pipeline execution.
+ * REST controller for trading agent CRUD, start/stop, AI pipeline execution,
+ * agent chat, and CEO command processing.
  *
  * <ul>
- *   <li>POST   /api/v1/agents             — Create an agent</li>
- *   <li>GET    /api/v1/agents             — List all agents</li>
- *   <li>GET    /api/v1/agents/{id}        — Get by ID</li>
- *   <li>DELETE /api/v1/agents/{id}        — Delete</li>
- *   <li>POST   /api/v1/agents/{id}/start  — Start scheduled execution</li>
- *   <li>POST   /api/v1/agents/{id}/stop   — Stop scheduled execution</li>
- *   <li>POST   /api/v1/agents/{id}/run-pipeline  — Run AI research pipeline</li>
- *   <li>POST   /api/v1/agents/{id}/attribution   — Run attribution pipeline</li>
- *   <li>GET    /api/v1/agents/roles       — List all available agent roles</li>
+ *   <li>POST   /api/v1/agents                  — Create an agent</li>
+ *   <li>GET    /api/v1/agents                  — List all agents</li>
+ *   <li>GET    /api/v1/agents/{id}             — Get by ID</li>
+ *   <li>DELETE /api/v1/agents/{id}             — Delete</li>
+ *   <li>POST   /api/v1/agents/{id}/start       — Start scheduled execution</li>
+ *   <li>POST   /api/v1/agents/{id}/stop        — Stop scheduled execution</li>
+ *   <li>POST   /api/v1/agents/{id}/run-pipeline — Run AI research pipeline</li>
+ *   <li>POST   /api/v1/agents/{id}/attribution  — Run attribution pipeline</li>
+ *   <li>POST   /api/v1/agents/{id}/chat         — Chat with a specific agent</li>
+ *   <li>GET    /api/v1/agents/{id}/conversation  — Get conversation history</li>
+ *   <li>DELETE /api/v1/agents/{id}/conversation  — Clear conversation</li>
+ *   <li>POST   /api/v1/agents/ceo-command        — CEO broadcast command</li>
+ *   <li>GET    /api/v1/agents/roles              — List all available agent roles</li>
  * </ul>
  */
 @RestController
@@ -36,12 +47,23 @@ public class TradingAgentController {
 
     private final AgentSchedulerService agentService;
     private final AgentPipelineService agentPipelineService;
+    private final AgentConversationService conversationService;
+    private final ClaudeAgentService claudeService;
+    private final TradingAgentRepository agentRepository;
 
     public TradingAgentController(AgentSchedulerService agentService,
-            AgentPipelineService agentPipelineService) {
+            AgentPipelineService agentPipelineService,
+            AgentConversationService conversationService,
+            ClaudeAgentService claudeService,
+            TradingAgentRepository agentRepository) {
         this.agentService = agentService;
         this.agentPipelineService = agentPipelineService;
+        this.conversationService = conversationService;
+        this.claudeService = claudeService;
+        this.agentRepository = agentRepository;
     }
+
+    // ── CRUD ────────────────────────────────────────────────────────────
 
     @PostMapping
     public ResponseEntity<TradingAgentResponse> create(@Valid @RequestBody TradingAgentRequest request) {
@@ -64,6 +86,8 @@ public class TradingAgentController {
         return ResponseEntity.noContent().build();
     }
 
+    // ── Start / Stop ────────────────────────────────────────────────────
+
     @PostMapping("/{id}/start")
     public ResponseEntity<TradingAgentResponse> start(@PathVariable Long id) {
         return ResponseEntity.ok(agentService.startAgent(id));
@@ -73,6 +97,8 @@ public class TradingAgentController {
     public ResponseEntity<TradingAgentResponse> stop(@PathVariable Long id) {
         return ResponseEntity.ok(agentService.stopAgent(id));
     }
+
+    // ── Pipelines ───────────────────────────────────────────────────────
 
     /**
      * Run the full AI research pipeline for an agent's strategy.
@@ -104,10 +130,9 @@ public class TradingAgentController {
 
     /**
      * Run the HFT Systems Engineer audit pipeline.
-     * Analyzes the platform as a principal engineer at a top HFT firm would.
      *
      * @param symbol trading symbol for context (defaults to SPY)
-     * @return system audit result with optimizations and production readiness assessment
+     * @return system audit result
      */
     @PostMapping("/system-audit")
     public ResponseEntity<Map<String, Object>> runSystemAudit(
@@ -117,16 +142,93 @@ public class TradingAgentController {
 
     /**
      * Run the Execution Monitor pipeline.
-     * Performs real-time surveillance of all active algorithms and trade executions.
      *
      * @param symbol trading symbol for context (defaults to SPY)
-     * @return monitoring result with anomalies, circuit breaker status, and exec quality
+     * @return monitoring result
      */
     @PostMapping("/execution-monitor")
     public ResponseEntity<Map<String, Object>> runExecutionMonitor(
             @RequestParam(defaultValue = "SPY") String symbol) {
         return ResponseEntity.ok(agentPipelineService.runExecutionMonitorPipeline(symbol));
     }
+
+    // ── Agent Chat ──────────────────────────────────────────────────────
+
+    /**
+     * Have a natural-language conversation with a specific agent.
+     *
+     * @param id   agent ID
+     * @param body request body with "message" field
+     * @return agent's conversational reply
+     */
+    @PostMapping("/{id}/chat")
+    public ResponseEntity<Map<String, Object>> chatWithAgent(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        String message = body.get("message");
+        if (message == null || message.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Message is required"));
+        }
+        return ResponseEntity.ok(conversationService.chat(id, message));
+    }
+
+    /**
+     * Get conversation history for a specific agent.
+     *
+     * @param id agent ID
+     * @return list of conversation messages
+     */
+    @GetMapping("/{id}/conversation")
+    public ResponseEntity<List<Map<String, Object>>> getConversation(@PathVariable Long id) {
+        List<AgentConversation> history = conversationService.getHistory(id);
+        List<Map<String, Object>> result = history.stream()
+                .map(c -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("id", c.getId());
+                    m.put("agentId", c.getAgentId());
+                    m.put("role", c.getRole());
+                    m.put("content", c.getContent());
+                    m.put("createdAt", c.getCreatedAt().toString());
+                    return m;
+                })
+                .toList();
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Clear conversation history for a specific agent.
+     *
+     * @param id agent ID
+     * @return 204 No Content
+     */
+    @DeleteMapping("/{id}/conversation")
+    public ResponseEntity<Void> clearConversation(@PathVariable Long id) {
+        conversationService.clearHistory(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Process a CEO broadcast command — routes to the most relevant agent.
+     *
+     * @param body request body with "message" field
+     * @return the responding agent's name, role, and reply
+     */
+    @PostMapping("/ceo-command")
+    public ResponseEntity<Map<String, Object>> ceoCommand(@RequestBody Map<String, String> body) {
+        String message = body.get("message");
+        if (message == null || message.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Message is required"));
+        }
+
+        List<TradingAgent> agents = agentRepository.findAll();
+        Map<String, Object> firmContext = Map.of("agent_count", agents.size());
+
+        return ResponseEntity.ok(claudeService.processCeoCommand(message, agents, firmContext));
+    }
+
+    // ── Roles ───────────────────────────────────────────────────────────
 
     /**
      * List all available agent roles with their default system prompt previews.
@@ -163,3 +265,4 @@ public class TradingAgentController {
         };
     }
 }
+

@@ -137,6 +137,205 @@ public class ClaudeAgentService {
                 .orElse("{}");
     }
 
+    // ── Conversation Mode ────────────────────────────────────────────
+
+    /**
+     * Have a natural-language conversation with a specific agent.
+     * Uses the agent's system prompt but instructs conversational output (not JSON).
+     * Maintains conversation history for context continuity.
+     *
+     * @param agentId             the agent's database ID
+     * @param userMessage         the CEO's message to this agent
+     * @param conversationHistory list of prior messages [{role, content}, ...]
+     * @param agentSystemPrompt   the agent's full system prompt
+     * @param personaName         the agent's name (e.g. "Marcus K.")
+     * @return the agent's conversational reply as a plain string
+     */
+    public String chatWithAgent(Long agentId, String userMessage,
+            java.util.List<java.util.Map<String, String>> conversationHistory,
+            String agentSystemPrompt, String personaName) {
+
+        String conversationalSystem = agentSystemPrompt + "\n\n"
+                + "CONVERSATION MODE — OVERRIDE JSON REQUIREMENT:\n"
+                + "You are now in a direct conversation with your CEO.\n"
+                + "Respond in natural, professional English — NOT JSON.\n"
+                + "Keep responses concise (2-4 paragraphs max).\n"
+                + "Address the CEO directly. Use \"I\" and refer to your analysis.\n"
+                + "Sign off with your name: " + personaName + "\n"
+                + "Do not include JSON blobs. Speak like a real professional colleague.\n";
+
+        try {
+            var paramsBuilder = MessageCreateParams.builder()
+                    .model(MODEL)
+                    .maxTokens(MAX_TOKENS)
+                    .system(conversationalSystem);
+
+            // Add conversation history
+            for (java.util.Map<String, String> msg : conversationHistory) {
+                if ("user".equals(msg.get("role"))) {
+                    paramsBuilder.addUserMessage(msg.get("content"));
+                } else {
+                    paramsBuilder.addAssistantMessage(msg.get("content"));
+                }
+            }
+            paramsBuilder.addUserMessage(userMessage);
+
+            Message response = client.messages().create(paramsBuilder.build());
+            String reply = extractTextContent(response);
+
+            log.info("Chat with agent {} ({}). Tokens: input={}, output={}",
+                    agentId, personaName,
+                    response.usage().inputTokens(),
+                    response.usage().outputTokens());
+
+            return reply;
+        } catch (Exception e) {
+            log.error("Chat with agent {} failed: {}", agentId, e.getMessage(), e);
+            return "I'm having trouble responding right now. Please try again shortly. — " + personaName;
+        }
+    }
+
+    /**
+     * Process a CEO-level message that gets routed to the most relevant agent.
+     * Returns a synthesized response from the best-matched agent.
+     *
+     * @param message      the CEO's broadcast message
+     * @param activeAgents list of currently active trading agents
+     * @param firmContext  map of firm-level context (name, type, capital, etc.)
+     * @return response map with agent_name, agent_role, response, confidence
+     */
+    public Map<String, Object> processCeoCommand(String message,
+            java.util.List<com.QuantPlatformApplication.QuantPlatformApplication.model.entity.TradingAgent> activeAgents,
+            Map<String, Object> firmContext) {
+
+        if (activeAgents.isEmpty()) {
+            return Map.of(
+                    "agent_name", "System",
+                    "agent_role", "SYSTEM",
+                    "response", "No agents are currently available. Please set up your firm first.",
+                    "confidence", 0.0
+            );
+        }
+
+        // Build a routing prompt to determine which agent should respond
+        StringBuilder agentList = new StringBuilder();
+        for (var agent : activeAgents) {
+            String name = agent.getPersonaName() != null ? agent.getPersonaName() : agent.getName();
+            agentList.append("- ").append(name)
+                    .append(" (").append(agent.getAgentRole()).append(")\n");
+        }
+
+        String routingSystemPrompt = "You are the AI routing system for a trading firm. "
+                + "The CEO has sent a message. Based on the message content, respond as the most "
+                + "relevant team member. Available team members:\n"
+                + agentList
+                + "\nFirm context: " + firmContext
+                + "\nRespond in first person as that team member. "
+                + "Keep response to 2-3 paragraphs. Sign off with the team member's name.";
+
+        try {
+            Message response = client.messages().create(
+                    MessageCreateParams.builder()
+                            .model(MODEL)
+                            .maxTokens(MAX_TOKENS)
+                            .system(routingSystemPrompt)
+                            .addUserMessage(message)
+                            .build());
+
+            String reply = extractTextContent(response);
+
+            // Try to identify which agent responded from the sign-off
+            String respondingAgentName = activeAgents.get(0).getPersonaName() != null
+                    ? activeAgents.get(0).getPersonaName()
+                    : activeAgents.get(0).getName();
+            String respondingRole = activeAgents.get(0).getAgentRole().name();
+
+            for (var agent : activeAgents) {
+                String name = agent.getPersonaName() != null ? agent.getPersonaName() : agent.getName();
+                if (reply.contains(name)) {
+                    respondingAgentName = name;
+                    respondingRole = agent.getAgentRole().name();
+                    break;
+                }
+            }
+
+            return Map.of(
+                    "agent_name", respondingAgentName,
+                    "agent_role", respondingRole,
+                    "response", reply,
+                    "confidence", 0.85
+            );
+        } catch (Exception e) {
+            log.error("CEO command processing failed: {}", e.getMessage(), e);
+            return Map.of(
+                    "agent_name", "System",
+                    "agent_role", "SYSTEM",
+                    "response", "I'm having difficulty processing your request right now. Please try again.",
+                    "confidence", 0.0
+            );
+        }
+    }
+
+    // ── Firm Context Injection ───────────────────────────────────────
+
+    /**
+     * Run a specific agent role with firm context injected into the system prompt.
+     *
+     * @param role        the AI agent role to execute
+     * @param contextJson JSON string with context data for the agent
+     * @param firm        the firm profile for context injection (may be null)
+     * @return parsed JSON response as a Map
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> runAgent(AgentRole role, String contextJson,
+            com.QuantPlatformApplication.QuantPlatformApplication.model.entity.FirmProfile firm) {
+        String systemPrompt = injectFirmContext(getSystemPrompt(role), firm);
+
+        try {
+            Message response = client.messages().create(
+                    MessageCreateParams.builder()
+                            .model(MODEL)
+                            .maxTokens(MAX_TOKENS)
+                            .system(systemPrompt)
+                            .addUserMessage(contextJson)
+                            .build());
+
+            String content = extractTextContent(response);
+            content = content.replaceAll("```json\\s*", "").replaceAll("```\\s*", "").trim();
+
+            log.info("Agent {} (firm-aware) completed. Tokens: input={}, output={}",
+                    role, response.usage().inputTokens(), response.usage().outputTokens());
+
+            return objectMapper.readValue(content, Map.class);
+        } catch (Exception e) {
+            log.error("Claude agent {} (firm-aware) failed: {}", role, e.getMessage(), e);
+            return Map.of("error", e.getMessage(), "agent_role", role.name(), "status", "FAILED");
+        }
+    }
+
+    /**
+     * Inject firm context into an agent's system prompt.
+     *
+     * @param systemPrompt the original system prompt
+     * @param firm         the firm profile (may be null)
+     * @return the augmented system prompt
+     */
+    private String injectFirmContext(String systemPrompt,
+            com.QuantPlatformApplication.QuantPlatformApplication.model.entity.FirmProfile firm) {
+        if (firm == null) return systemPrompt;
+        return String.format(
+                "FIRM CONTEXT:\n"
+                + "You work at %s, a %s firm.\n"
+                + "Initial Capital: $%s\n"
+                + "Risk Appetite: %s\n"
+                + "Your decisions must align with this firm's mandate and risk profile.\n\n",
+                firm.getFirmName(),
+                firm.getFirmType().name().replace("_", " "),
+                firm.getInitialCapital().toPlainString(),
+                firm.getRiskAppetite())
+                + systemPrompt;
+    }
+
     /**
      * Map an AgentRole to its corresponding system prompt.
      *

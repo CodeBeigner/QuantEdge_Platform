@@ -2,7 +2,6 @@ package com.QuantPlatformApplication.QuantPlatformApplication.service;
 
 import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.MarketDataEntity;
 import com.QuantPlatformApplication.QuantPlatformApplication.repository.MarketDataRepository;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -38,7 +37,6 @@ public class MarketDataService {
      * @param end    End of date range (inclusive)
      * @return List of price bars ordered chronologically
      */
-    @Cacheable(value = "marketData", key = "#symbol + ':' + #start + ':' + #end")
     public List<MarketDataEntity> fetchDailyData(String symbol, Instant start, Instant end) {
         if (symbol == null || symbol.isBlank()) {
             throw new IllegalArgumentException("Symbol must not be blank");
@@ -59,7 +57,6 @@ public class MarketDataService {
      * @param days   Number of recent trading days to fetch
      * @return List of price bars ordered chronologically (oldest → newest)
      */
-    @Cacheable(value = "marketData", key = "#symbol + ':recent:' + #days")
     public List<MarketDataEntity> fetchRecentData(String symbol, int days) {
         if (symbol == null || symbol.isBlank()) {
             throw new IllegalArgumentException("Symbol must not be blank");

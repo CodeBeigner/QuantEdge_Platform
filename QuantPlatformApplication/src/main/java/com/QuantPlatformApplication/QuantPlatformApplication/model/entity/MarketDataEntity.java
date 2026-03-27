@@ -26,7 +26,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "market_data")
 @IdClass(MarketDataId.class)
-public class MarketDataEntity {
+public class MarketDataEntity implements java.io.Serializable {
 
     @Id
     @Column(nullable = false)

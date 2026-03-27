@@ -399,4 +399,67 @@ const ApiClient = {
         const res = await this._fetch(API_BASE + '/ml/health', { headers: this._headers() });
         return res.json();
     },
+
+    // ── Firm Setup ──────────────────────────────────────────────────
+
+    async setupFirm(firmName, firmType, initialCapital, riskAppetite) {
+        const res = await this._fetch(API_BASE + '/firm/setup', {
+            method: 'POST', headers: this._headers(),
+            body: JSON.stringify({ firmName, firmType, initialCapital, riskAppetite }),
+        });
+        return res.json();
+    },
+
+    async getFirm() {
+        const res = await this._fetch(API_BASE + '/firm', { headers: this._headers() });
+        if (res.status === 404) return null;
+        return res.json();
+    },
+
+    async getFirmSetupStatus() {
+        const res = await this._fetch(API_BASE + '/firm/setup-status', { headers: this._headers() });
+        return res.json();
+    },
+
+    async updateFirm(firmName, riskAppetite) {
+        const res = await this._fetch(API_BASE + '/firm', {
+            method: 'PUT', headers: this._headers(),
+            body: JSON.stringify({ firmName, riskAppetite }),
+        });
+        return res.json();
+    },
+
+    // ── Agent Chat & Conversation ───────────────────────────────────
+
+    async chatWithAgent(agentId, message) {
+        const res = await this._fetch(API_BASE + '/agents/' + agentId + '/chat', {
+            method: 'POST', headers: this._headers(),
+            body: JSON.stringify({ message }),
+        });
+        return res.json();
+    },
+
+    async getAgentConversation(agentId) {
+        const res = await this._fetch(API_BASE + '/agents/' + agentId + '/conversation', {
+            headers: this._headers(),
+        });
+        return res.json();
+    },
+
+    async clearAgentConversation(agentId) {
+        const res = await this._fetch(API_BASE + '/agents/' + agentId + '/conversation', {
+            method: 'DELETE', headers: this._headers(),
+        });
+        return res;
+    },
+
+    // ── CEO Broadcast ───────────────────────────────────────────────
+
+    async ceoBroadcast(message) {
+        const res = await this._fetch(API_BASE + '/agents/ceo-command', {
+            method: 'POST', headers: this._headers(),
+            body: JSON.stringify({ message }),
+        });
+        return res.json();
+    },
 };
