@@ -5,8 +5,8 @@ import com.QuantPlatformApplication.QuantPlatformApplication.repository.TradingA
 import com.QuantPlatformApplication.QuantPlatformApplication.repository.StrategyRepository;
 import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.Strategy;
 import com.QuantPlatformApplication.QuantPlatformApplication.event.EventPublisher;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -21,13 +21,23 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AgentDecisionExecutorService {
 
     private final TradingAgentRepository agentRepository;
     private final StrategyRepository strategyRepository;
     private final AgentSchedulerService schedulerService;
     private final EventPublisher eventPublisher;
+
+    public AgentDecisionExecutorService(
+            TradingAgentRepository agentRepository,
+            StrategyRepository strategyRepository,
+            AgentSchedulerService schedulerService,
+            @Autowired(required = false) EventPublisher eventPublisher) {
+        this.agentRepository = agentRepository;
+        this.strategyRepository = strategyRepository;
+        this.schedulerService = schedulerService;
+        this.eventPublisher = eventPublisher;
+    }
 
     public Map<String, Object> executePipelineDecision(Long agentId, Map<String, Object> pipelineResult) {
         String status = (String) pipelineResult.getOrDefault("pipeline_status", "UNKNOWN");
@@ -61,12 +71,14 @@ public class AgentDecisionExecutorService {
         agent.setUpdatedAt(Instant.now());
         agentRepository.save(agent);
 
-        eventPublisher.publishAgentPipelineResult(String.valueOf(agent.getId()), Map.of(
-                "agentId", agent.getId(),
-                "decision", "DEPLOY",
-                "status", "ACTIVATED",
-                "timestamp", Instant.now().toString()
-        ));
+        if (eventPublisher != null) {
+            eventPublisher.publishAgentPipelineResult(String.valueOf(agent.getId()), Map.of(
+                    "agentId", agent.getId(),
+                    "decision", "DEPLOY",
+                    "status", "ACTIVATED",
+                    "timestamp", Instant.now().toString()
+            ));
+        }
 
         return Map.of(
                 "status", "DEPLOYED",

@@ -1,6 +1,7 @@
 package com.QuantPlatformApplication.QuantPlatformApplication.config;
 
 import org.apache.kafka.clients.admin.NewTopic;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.TopicBuilder;
@@ -8,8 +9,10 @@ import org.springframework.kafka.config.TopicBuilder;
 /**
  * Kafka topic configuration.
  * Creates all required topics on application startup.
+ * Disabled when spring.kafka.enabled=false.
  */
 @Configuration
+@ConditionalOnProperty(name = "spring.kafka.enabled", havingValue = "true", matchIfMissing = true)
 public class KafkaConfig {
 
     public static final String MARKET_DATA_TOPIC = "market-data";
