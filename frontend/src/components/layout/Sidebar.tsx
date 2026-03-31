@@ -9,7 +9,7 @@ const navItems = [
   { label: 'Backtest', icon: 'science', path: '/backtest' },
   { label: 'Agents', icon: 'smart_toy', path: '/agents' },
   { label: 'AI Intel', icon: 'auto_awesome', path: '/ai-intel' },
-  { label: 'Orders', icon: 'receipt_long', path: '/orders' },
+  { label: 'Trading', icon: 'candlestick_chart', path: '/trading' },
   { label: 'Risk', icon: 'shield', path: '/risk' },
   { label: 'ML Models', icon: 'model_training', path: '/ml' },
   { label: 'Alerts', icon: 'notification_important', path: '/alerts' },

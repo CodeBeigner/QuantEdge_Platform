@@ -23,7 +23,7 @@ import { StrategiesPage } from '@/pages/StrategiesPage';
 import { BacktestPage } from '@/pages/BacktestPage';
 import AgentsPage from '@/pages/AgentsPage';
 import AIIntelPage from '@/pages/AIIntelPage';
-import { OrdersPage } from '@/pages/OrdersPage';
+import { TradingPage } from '@/pages/TradingPage';
 import RiskPage from '@/pages/RiskPage';
 import MLPage from '@/pages/MLPage';
 import AlertsPage from '@/pages/AlertsPage';
@@ -163,7 +163,8 @@ export default function App() {
           <Route path="/backtest" element={<BacktestPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/ai-intel" element={<AIIntelPage />} />
-          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/trading" element={<TradingPage />} />
+          <Route path="/orders" element={<Navigate to="/trading" replace />} />
           <Route path="/risk" element={<RiskPage />} />
           <Route path="/ml" element={<MLPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
