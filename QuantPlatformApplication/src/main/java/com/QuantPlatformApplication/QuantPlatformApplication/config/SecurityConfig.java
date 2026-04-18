@@ -70,6 +70,7 @@ public class SecurityConfig {
                                 "/api/v1/market-hours/**", // market hours (public for dev)
                                 "/api/v1/agent-performance/**", // agent perf (public for dev)
                                 "/api/v1/signals/**", // signal tracking (public for dev)
+                                "/api/v1/telegram/**", // Telegram webhook (public for bot)
                                 "/ws/**", // websocket
                                 "/actuator/**", // health checks + metrics
                                 "/error" // Spring error dispatch
