@@ -79,3 +79,14 @@ server:
   error:
     include-message: always
     include-stacktrace: on_param
+
+delta-exchange:
+  testnet-base-url: https://cdn-ind.testnet.deltaex.org
+  production-base-url: https://api.india.delta.exchange
+  testnet-ws-url: wss://cdn-ind.testnet.deltaex.org/v2/ws
+  production-ws-url: wss://api.india.delta.exchange/v2/ws
+  timeout-seconds: 10
+  max-retries: 3
+
+encryption:
+  key: ${ENCRYPTION_KEY:default-key-change-in-production!!}
