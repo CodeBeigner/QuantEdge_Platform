@@ -16,6 +16,23 @@ public class TradeRiskEngine {
                                     double currentExposure, double dailyRealizedLoss,
                                     Set<String> openPositionSymbols, RiskParameters params) {
 
+        // Early guards: non-tradeable action, invalid balance/equity, invalid prices
+        if (request.getAction() == Action.HOLD) {
+            return RiskCheckResult.reject(List.of("HOLD action is not a tradeable request"));
+        }
+        if (currentBalance <= 0) {
+            return RiskCheckResult.reject(List.of("Cannot trade with zero or negative balance"));
+        }
+        if (peakEquity <= 0) {
+            return RiskCheckResult.reject(List.of("Cannot trade with zero or negative peak equity"));
+        }
+        if (request.getEntryPrice() <= 0) {
+            return RiskCheckResult.reject(List.of("Entry price must be positive"));
+        }
+        if (request.getTakeProfitPrice() <= 0) {
+            return RiskCheckResult.reject(List.of("Take-profit price must be positive"));
+        }
+
         List<String> rejections = new ArrayList<>();
 
         // CHECK 6: Stop-loss validation (run first — other checks depend on stop distance)
@@ -29,9 +46,25 @@ public class TradeRiskEngine {
         double positionSize = riskAmount / stopDistance;
         double notionalValue = positionSize * request.getEntryPrice();
 
-        // CHECK: Risk-reward ratio
-        double rewardDistance = Math.abs(request.getTakeProfitPrice() - request.getEntryPrice());
-        double rrRatio = rewardDistance / stopDistance;
+        // CHECK: Risk-reward ratio (validate TP direction)
+        boolean isLong = request.getAction() == Action.BUY;
+        double rewardDistance;
+        if (isLong) {
+            if (request.getTakeProfitPrice() <= request.getEntryPrice()) {
+                rejections.add("Take-profit must be above entry for BUY orders");
+                rewardDistance = 0;
+            } else {
+                rewardDistance = request.getTakeProfitPrice() - request.getEntryPrice();
+            }
+        } else {
+            if (request.getTakeProfitPrice() >= request.getEntryPrice()) {
+                rejections.add("Take-profit must be below entry for SELL orders");
+                rewardDistance = 0;
+            } else {
+                rewardDistance = request.getEntryPrice() - request.getTakeProfitPrice();
+            }
+        }
+        double rrRatio = stopDistance > 0 ? rewardDistance / stopDistance : 0;
         if (rrRatio < params.getMinRiskRewardRatio()) {
             rejections.add(String.format("Risk:reward ratio %.2f below minimum %.1f",
                     rrRatio, params.getMinRiskRewardRatio()));
@@ -117,6 +150,7 @@ public class TradeRiskEngine {
         if (stopPct > params.getMaxStopDistancePct()) {
             rejections.add(String.format("Stop distance %.2f%% exceeds max %.0f%%",
                     stopPct * 100, params.getMaxStopDistancePct() * 100));
+            return 0;
         }
 
         return stopDistance;
@@ -124,7 +158,6 @@ public class TradeRiskEngine {
 
     private int calculateNominalLeverage(double notionalValue, double balance) {
         double rawLeverage = notionalValue / balance;
-        if (rawLeverage <= 1) return 10;
         if (rawLeverage <= 3) return 10;
         if (rawLeverage <= 5) return 10;
         if (rawLeverage <= 10) return 15;

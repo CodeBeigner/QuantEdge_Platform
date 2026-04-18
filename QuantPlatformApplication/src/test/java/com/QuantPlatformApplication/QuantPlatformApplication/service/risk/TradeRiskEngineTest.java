@@ -192,4 +192,45 @@ class TradeRiskEngineTest {
         assertTrue(result.getEffectiveLeverage() <= 5.0);
         assertTrue(result.getNominalLeverage() >= 10);
     }
+
+    @Test
+    void rejectsHoldAction() {
+        TradeRequest req = validLongRequest().action(Action.HOLD).build();
+        RiskCheckResult result = engine.evaluate(req, 500, 500, 0, 0, Set.of(), defaultParams);
+        assertFalse(result.isApproved());
+    }
+
+    @Test
+    void rejectsZeroBalance() {
+        TradeRequest req = validLongRequest().build();
+        RiskCheckResult result = engine.evaluate(req, 0, 500, 0, 0, Set.of(), defaultParams);
+        assertFalse(result.isApproved());
+    }
+
+    @Test
+    void rejectsZeroEntryPrice() {
+        TradeRequest req = validLongRequest().entryPrice(0).build();
+        RiskCheckResult result = engine.evaluate(req, 500, 500, 0, 0, Set.of(), defaultParams);
+        assertFalse(result.isApproved());
+    }
+
+    @Test
+    void rejectsWrongDirectionTakeProfit() {
+        // BUY with TP below entry
+        TradeRequest req = validLongRequest().takeProfitPrice(66000).build();
+        RiskCheckResult result = engine.evaluate(req, 500, 500, 0, 0, Set.of(), defaultParams);
+        assertFalse(result.isApproved());
+    }
+
+    @Test
+    void rejectsShortWithStopBelowEntry() {
+        TradeRequest req = TradeRequest.builder()
+            .symbol("BTCUSD").action(Action.SELL)
+            .entryPrice(67000).stopLossPrice(66700)
+            .takeProfitPrice(66100).confidence(0.8)
+            .strategyName("TEST").reasoning("test").build();
+        RiskCheckResult result = engine.evaluate(req, 500, 500, 0, 0, Set.of(), defaultParams);
+        assertFalse(result.isApproved());
+        assertTrue(result.getRejectionReasons().stream().anyMatch(r -> r.toLowerCase().contains("stop")));
+    }
 }
