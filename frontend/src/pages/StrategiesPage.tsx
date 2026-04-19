@@ -1,394 +1,614 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Brain,
+  Check,
   ChevronDown,
-  ChevronUp,
-  Loader2,
-  Play,
-  Plus,
-  Trash2,
+  ChevronRight,
+  Clock,
+  Filter,
+  X,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
+import { toast } from 'sonner'
 import { api } from '@/services/api'
 import { PageHeader } from '@/components/ui/PageHeader'
-import type { ExecutionResult, Strategy } from '@/types'
+import type { RiskConfig, TradeLog } from '@/types'
 
-const MODEL_TYPES = [
-  'MOMENTUM',
-  'VOLATILITY',
-  'MACRO',
-  'CORRELATION',
-  'REGIME',
-] as const satisfies readonly Strategy['modelType'][]
+/* ─── Strategy Card Definitions ─── */
 
-const MODEL_BADGE: Record<Strategy['modelType'], React.CSSProperties> = {
-  MOMENTUM: { background: 'rgba(0,255,136,0.15)', color: 'var(--tertiary)', borderColor: 'rgba(0,255,136,0.4)' },
-  VOLATILITY: { background: 'rgba(59,130,246,0.15)', color: 'var(--primary)', borderColor: 'rgba(59,130,246,0.4)' },
-  MACRO: { background: 'rgba(251,191,36,0.15)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.4)' },
-  CORRELATION: { background: 'rgba(167,139,250,0.15)', color: 'var(--primary)', borderColor: 'rgba(167,139,250,0.4)' },
-  REGIME: { background: 'rgba(34,211,238,0.15)', color: '#22d3ee', borderColor: 'rgba(34,211,238,0.4)' },
+interface StrategyCardDef {
+  id: string
+  name: string
+  borderColor: string
+  status: 'active' | 'waiting'
+  description: string
 }
 
-function signalBadgeStyle(signal: string): React.CSSProperties {
-  const s = signal.toUpperCase()
-  if (s === 'BUY' || s.includes('BUY'))
-    return { background: 'rgba(0,255,136,0.15)', color: 'var(--tertiary)', borderColor: 'rgba(0,255,136,0.4)' }
-  if (s === 'SELL' || s.includes('SELL'))
-    return { background: 'rgba(239,68,68,0.15)', color: 'var(--error)', borderColor: 'rgba(239,68,68,0.4)' }
-  return { background: 'rgba(251,191,36,0.15)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.4)' }
-}
+const STRATEGY_CARDS: StrategyCardDef[] = [
+  {
+    id: 'trend',
+    name: 'Trend Continuation',
+    borderColor: '#00e479',
+    status: 'active',
+    description: '4H bias \u2192 1H zones \u2192 15M entries',
+  },
+  {
+    id: 'meanrev',
+    name: 'Mean Reversion',
+    borderColor: '#5de6ff',
+    status: 'active',
+    description: 'Bollinger/RSI extremes \u2192 VWAP targets',
+  },
+  {
+    id: 'funding',
+    name: 'Funding Sentiment',
+    borderColor: '#adc6ff',
+    status: 'waiting',
+    description: 'Extreme funding + OI \u2192 liquidation cascades',
+  },
+]
 
-function formatDate(iso: string) {
+/* ─── Helpers ─── */
+
+function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString()
+    const d = new Date(iso)
+    return d.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
   } catch {
     return iso
   }
 }
 
+function riskReward(log: TradeLog): string {
+  if (!log.entryPrice || !log.stopLossPrice || !log.takeProfitPrice) return '\u2014'
+  const risk = Math.abs(log.entryPrice - log.stopLossPrice)
+  if (risk === 0) return '\u2014'
+  const reward = Math.abs(log.takeProfitPrice - log.entryPrice)
+  return `1:${(reward / risk).toFixed(1)}`
+}
+
+function statusIcon(status: TradeLog['status']) {
+  switch (status) {
+    case 'CLOSED':
+      return <Check style={{ width: 14, height: 14, color: 'var(--tertiary)' }} />
+    case 'CANCELLED':
+      return <X style={{ width: 14, height: 14, color: 'var(--error)' }} />
+    default:
+      return <Clock style={{ width: 14, height: 14, color: '#fbbf24' }} />
+  }
+}
+
+function statusLabel(status: TradeLog['status']): string {
+  switch (status) {
+    case 'PENDING': return 'Pending'
+    case 'OPEN': return 'Open'
+    case 'CLOSED': return 'Executed'
+    case 'CANCELLED': return 'Rejected'
+    default: return status
+  }
+}
+
+function strategyFilterKey(name: string): string {
+  const lower = name.toLowerCase()
+  if (lower.includes('trend')) return 'Trend'
+  if (lower.includes('mean') || lower.includes('reversion')) return 'MeanRev'
+  if (lower.includes('funding')) return 'Funding'
+  return 'Other'
+}
+
+/* ─── Component ─── */
+
 export function StrategiesPage() {
   const queryClient = useQueryClient()
-  const [formOpen, setFormOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [symbol, setSymbol] = useState('')
-  const [modelType, setModelType] = useState<Strategy['modelType']>('MOMENTUM')
-  const [executionById, setExecutionById] = useState<
-    Record<number, ExecutionResult | undefined>
-  >({})
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null)
+  const [strategyFilter, setStrategyFilter] = useState('All')
+  const [statusFilter, setStatusFilter] = useState('All')
 
-  const { data: strategies = [], isLoading: strategiesLoading } = useQuery({
-    queryKey: ['strategies'],
-    queryFn: () => api.getStrategies(),
+  // Fetch risk config (execution mode, etc.)
+  const { data: riskConfig } = useQuery<RiskConfig>({
+    queryKey: ['riskConfig'],
+    queryFn: () => api.getRiskConfig(),
+    refetchInterval: 10_000,
   })
 
-  const { data: symbols = [], isLoading: symbolsLoading } = useQuery({
-    queryKey: ['symbols'],
-    queryFn: () => api.getSymbols(),
+  // Fetch trade logs (signals)
+  const { data: tradeLogs = [] } = useQuery<TradeLog[]>({
+    queryKey: ['tradeLogs'],
+    queryFn: () => api.getTradeLogs(),
+    refetchInterval: 10_000,
   })
 
-  const symbolOptions = useMemo(() => {
-    const list = [...symbols].sort()
-    return list
-  }, [symbols])
-
-  const createMutation = useMutation({
-    mutationFn: () =>
-      api.createStrategy({
-        name: name.trim(),
-        symbol: symbol.trim(),
-        modelType,
-        parameters: {},
-        active: true,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['strategies'] })
-      setName('')
-      setSymbol('')
-      setModelType('MOMENTUM')
-      setFormOpen(false)
+  // Execution mode mutation
+  const modeMutation = useMutation({
+    mutationFn: (mode: RiskConfig['executionMode']) =>
+      api.updateRiskConfig({ executionMode: mode }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['riskConfig'] })
+      toast.success(`Execution mode set to ${data.executionMode.replace('_', ' ')}`)
+    },
+    onError: (err: Error) => {
+      toast.error(`Failed to update execution mode: ${err.message}`)
     },
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.deleteStrategy(id),
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: ['strategies'] })
-      setExecutionById(prev => {
-        const next = { ...prev }
-        delete next[id]
-        return next
-      })
-    },
+  const currentMode = riskConfig?.executionMode ?? 'HUMAN_IN_LOOP'
+
+  // Filter signals
+  const filteredLogs = tradeLogs.filter((log) => {
+    if (strategyFilter !== 'All' && strategyFilterKey(log.strategyName) !== strategyFilter) return false
+    if (statusFilter === 'Executed' && log.status !== 'CLOSED') return false
+    if (statusFilter === 'Rejected' && log.status !== 'CANCELLED') return false
+    if (statusFilter === 'Expired' && log.status !== 'PENDING') return false
+    return true
   })
 
-  const executeMutation = useMutation({
-    mutationFn: (id: number) => api.executeStrategy(id),
-    onSuccess: (result, id) => {
-      setExecutionById(prev => ({ ...prev, [id]: result }))
-    },
-  })
-
-  function handleCreate(e: React.FormEvent) {
-    e.preventDefault()
-    if (!name.trim() || !symbol.trim()) return
-    createMutation.mutate()
+  // Derive per-strategy stats from tradeLogs
+  function getStrategyStats(stratKey: string) {
+    const logs = tradeLogs.filter((l) => strategyFilterKey(l.strategyName) === stratKey)
+    const closedLogs = logs.filter((l) => l.status === 'CLOSED' && l.outcome)
+    const wins = closedLogs.filter((l) => l.outcome?.result === 'WIN').length
+    const winRate = closedLogs.length > 0 ? ((wins / closedLogs.length) * 100).toFixed(0) + '%' : '\u2014'
+    const lastSignal = logs.length > 0 ? formatTime(logs[logs.length - 1].createdAt) : 'None'
+    const avgConfidence = logs.length > 0
+      ? logs.reduce((sum, l) => sum + (l.confidence ?? 0), 0) / logs.length
+      : 0
+    return { signals: logs.length, winRate, lastSignal, avgConfidence }
   }
 
   return (
     <div style={{ color: 'var(--on-surface)' }}>
-      <div className="mx-auto max-w-5xl">
-        <PageHeader title="Strategies" subtitle="ALPHA GENERATION // MODEL EXECUTION">
-          <button
-            type="button"
-            onClick={() => setFormOpen(o => !o)}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium transition"
-            style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', color: 'var(--on-surface)' }}
-          >
-            <Plus className="h-4 w-4" style={{ color: 'var(--tertiary)' }} />
-            New Strategy
-            {formOpen ? (
-              <ChevronUp className="h-4 w-4" style={{ color: 'var(--on-surface-variant)' }} />
-            ) : (
-              <ChevronDown className="h-4 w-4" style={{ color: 'var(--on-surface-variant)' }} />
-            )}
-          </button>
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+        {/* ── Top Bar ── */}
+        <PageHeader title="Strategies" subtitle="MULTI-TIMEFRAME // SIGNAL GENERATION">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {/* Execution mode toggle */}
+            <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--outline-variant)' }}>
+              {(['AUTONOMOUS', 'HUMAN_IN_LOOP'] as const).map((mode) => {
+                const active = currentMode === mode
+                const label = mode === 'HUMAN_IN_LOOP' ? 'HUMAN IN LOOP' : 'AUTONOMOUS'
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      if (!active) modeMutation.mutate(mode)
+                    }}
+                    disabled={modeMutation.isPending}
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: 11,
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: 600,
+                      letterSpacing: '0.05em',
+                      border: 'none',
+                      cursor: active ? 'default' : 'pointer',
+                      background: active ? 'var(--primary)' : 'var(--surface-container-low)',
+                      color: active ? 'var(--on-primary)' : 'var(--on-surface-variant)',
+                      transition: 'background var(--ease-normal), color var(--ease-normal)',
+                      opacity: modeMutation.isPending ? 0.6 : 1,
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Status indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--on-surface-variant)' }}>
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: riskConfig ? '#00e479' : '#fbbf24',
+                  display: 'inline-block',
+                  boxShadow: riskConfig ? '0 0 6px rgba(0,228,121,0.5)' : '0 0 6px rgba(251,191,36,0.5)',
+                }}
+              />
+              {riskConfig
+                ? `Running since ${formatTime(riskConfig.updatedAt)}`
+                : 'Paused'}
+            </div>
+          </div>
         </PageHeader>
 
-        {formOpen && (
-          <form
-            onSubmit={handleCreate}
-            className="mb-8 p-6 shadow-lg"
-            style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}
-          >
-            <h2 className="mb-4 text-lg font-medium" style={{ color: 'var(--on-surface)' }}>
-              Create strategy
+        {/* ── Strategy Cards Grid ── */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: 16,
+            marginBottom: 32,
+          }}
+        >
+          {STRATEGY_CARDS.map((card) => {
+            const stratKey = card.id === 'trend' ? 'Trend' : card.id === 'meanrev' ? 'MeanRev' : 'Funding'
+            const stats = getStrategyStats(stratKey)
+            return (
+              <div
+                key={card.id}
+                style={{
+                  background: '#1a2235',
+                  borderRadius: 8,
+                  borderTop: `3px solid ${card.borderColor}`,
+                  padding: 16,
+                  transition: 'box-shadow var(--ease-smooth), transform var(--ease-smooth)',
+                  cursor: 'default',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = `0 4px 24px rgba(0,0,0,0.3), 0 0 12px ${card.borderColor}33`
+                  e.currentTarget.style.transform = 'translateY(-1px)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = 'none'
+                  e.currentTarget.style.transform = 'none'
+                }}
+              >
+                {/* Card header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: 14, color: 'var(--on-surface)' }}>
+                    {card.name}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                    <span
+                      style={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: '50%',
+                        background: card.status === 'active' ? '#00e479' : '#fbbf24',
+                        display: 'inline-block',
+                      }}
+                    />
+                    <span style={{ color: card.status === 'active' ? '#00e479' : '#fbbf24' }}>
+                      {card.status === 'active' ? 'Active' : 'Waiting'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <p style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--on-surface-variant)', marginBottom: 14, lineHeight: 1.5 }}>
+                  {card.description}
+                </p>
+
+                {/* Stats */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--outline)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+                      Signals
+                    </div>
+                    <div style={{ fontSize: 16, fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--on-surface)' }}>
+                      {stats.signals}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--outline)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+                      Win Rate
+                    </div>
+                    <div style={{ fontSize: 16, fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--on-surface)' }}>
+                      {stats.winRate}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--outline)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+                      Last Signal
+                    </div>
+                    <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 500, color: 'var(--on-surface-variant)', marginTop: 2 }}>
+                      {stats.lastSignal}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Confidence bar */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--outline)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      Confidence
+                    </span>
+                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--on-surface-variant)' }}>
+                      {stats.avgConfidence > 0 ? `${(stats.avgConfidence * 100).toFixed(0)}%` : '0%'}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      height: 4,
+                      borderRadius: 2,
+                      background: 'var(--outline-variant)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: '100%',
+                        borderRadius: 2,
+                        width: `${Math.min(100, Math.max(0, stats.avgConfidence * 100))}%`,
+                        background: card.borderColor,
+                        transition: 'width var(--ease-smooth)',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* ── Signals Table ── */}
+        <div style={{ background: 'var(--surface-container-low)', borderRadius: 8, padding: 20, border: '1px solid var(--outline-variant)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+            <h2 style={{ fontFamily: 'var(--font-body)', fontSize: 14, fontWeight: 600, color: 'var(--on-surface)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Recent Signals
             </h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="flex flex-col gap-1.5 text-sm">
-                <span style={{ color: 'var(--on-surface-variant)' }}>Name</span>
-                <input
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  className="px-3 py-2 font-mono outline-none"
-                  style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--on-surface)' }}
-                  placeholder="My alpha"
-                  required
-                />
-              </label>
-              <label className="flex flex-col gap-1.5 text-sm">
-                <span style={{ color: 'var(--on-surface-variant)' }}>Symbol</span>
-                <select
-                  value={symbol}
-                  onChange={e => setSymbol(e.target.value)}
-                  disabled={symbolsLoading}
-                  className="px-3 py-2 font-mono outline-none disabled:opacity-50"
-                  style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--on-surface)' }}
-                  required
-                >
-                  <option value="">
-                    {symbolsLoading ? 'Loading...' : 'Select symbol'}
-                  </option>
-                  {symbolOptions.map(s => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1.5 text-sm sm:col-span-2">
-                <span style={{ color: 'var(--on-surface-variant)' }}>Model type</span>
-                <select
-                  value={modelType}
-                  onChange={e =>
-                    setModelType(e.target.value as Strategy['modelType'])
-                  }
-                  className="px-3 py-2 font-mono outline-none"
-                  style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--on-surface)' }}
-                >
-                  {MODEL_TYPES.map(t => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            {createMutation.isError && (
-              <p className="mt-3 text-sm" style={{ color: 'var(--error)' }}>
-                {(createMutation.error as Error).message}
-              </p>
-            )}
-            <div className="mt-4 flex gap-3">
-              <button
-                type="submit"
-                disabled={createMutation.isPending}
-                className="inline-flex items-center gap-2 bg-gradient-to-r from-[#00ff88] to-[#3b82f6] px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                style={{ color: 'var(--surface)' }}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Filter style={{ width: 14, height: 14, color: 'var(--outline)' }} />
+              <select
+                value={strategyFilter}
+                onChange={(e) => setStrategyFilter(e.target.value)}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontFamily: 'var(--font-mono)',
+                  background: 'var(--surface)',
+                  color: 'var(--on-surface)',
+                  border: '1px solid var(--outline-variant)',
+                  borderRadius: 4,
+                  outline: 'none',
+                }}
               >
-                {createMutation.isPending && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
-                Submit
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormOpen(false)}
-                className="px-4 py-2 text-sm"
-                style={{ border: '1px solid var(--outline-variant)', color: 'var(--on-surface-variant)' }}
+                <option value="All">All Strategies</option>
+                <option value="Trend">Trend</option>
+                <option value="MeanRev">MeanRev</option>
+                <option value="Funding">Funding</option>
+              </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontFamily: 'var(--font-mono)',
+                  background: 'var(--surface)',
+                  color: 'var(--on-surface)',
+                  border: '1px solid var(--outline-variant)',
+                  borderRadius: 4,
+                  outline: 'none',
+                }}
               >
-                Cancel
-              </button>
+                <option value="All">All Status</option>
+                <option value="Executed">Executed</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Expired">Expired</option>
+              </select>
             </div>
-          </form>
-        )}
-
-        {strategiesLoading ? (
-          <div className="flex justify-center py-16" style={{ color: 'var(--on-surface-variant)' }}>
-            <Loader2 className="h-8 w-8 animate-spin" style={{ color: 'var(--tertiary)' }} />
           </div>
-        ) : strategies.length === 0 ? (
-          <p className="py-12 text-center" style={{ border: '1px dashed var(--outline-variant)', background: 'rgba(26,34,52,0.5)', color: 'var(--outline)' }}>
-            No strategies yet. Create one to get started.
-          </p>
-        ) : (
-          <ul className="space-y-4">
-            {strategies.map(s => {
-              const exec = executionById[s.id]
-              const signal = exec?.action ?? 'HOLD'
-              return (
-                <li key={s.id}>
-                  <article className="overflow-hidden" style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}>
-                    <div className="flex flex-wrap items-start justify-between gap-3 p-4" style={{ borderBottom: '1px solid var(--outline-variant)' }}>
-                      <div>
-                        <h3 className="text-lg font-semibold" style={{ color: 'var(--on-surface)' }}>
-                          {s.name}
-                        </h3>
-                        <span
-                          className="mt-2 inline-block rounded-md font-mono text-xs font-medium px-2 py-0.5"
-                          style={{ ...MODEL_BADGE[s.modelType], borderWidth: '1px', borderStyle: 'solid' }}
-                        >
-                          {s.modelType}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => executeMutation.mutate(s.id)}
-                          disabled={executeMutation.isPending}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition disabled:opacity-50"
-                          style={{ border: '1px solid rgba(0,255,136,0.6)', color: 'var(--tertiary)', background: 'transparent' }}
-                        >
-                          {executeMutation.isPending &&
-                          executeMutation.variables === s.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Play className="h-4 w-4" />
-                          )}
-                          Execute
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `Delete strategy "${s.name}"? This cannot be undone.`,
-                              )
-                            )
-                              deleteMutation.mutate(s.id)
-                          }}
-                          disabled={deleteMutation.isPending}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition disabled:opacity-50"
-                          style={{ border: '1px solid rgba(239,68,68,0.6)', color: 'var(--error)', background: 'transparent' }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                    <div className="grid gap-2 p-4 font-mono text-sm sm:grid-cols-2" style={{ color: 'var(--on-surface-variant)' }}>
-                      <div>
-                        <span style={{ color: 'var(--outline)' }}>Symbol</span>{' '}
-                        <span style={{ color: 'var(--on-surface)' }}>{s.symbol}</span>
-                      </div>
-                      <div>
-                        <span style={{ color: 'var(--outline)' }}>Created</span>{' '}
-                        <span style={{ color: 'var(--on-surface)' }}>
-                          {formatDate(s.createdAt)}
-                        </span>
-                      </div>
-                    </div>
 
-                    {executeMutation.isError &&
-                      executeMutation.variables === s.id && (
-                        <p className="px-4 py-3 text-sm" style={{ borderTop: '1px solid var(--outline-variant)', color: 'var(--error)' }}>
-                          {(executeMutation.error as Error).message}
-                        </p>
-                      )}
+          {filteredLogs.length === 0 ? (
+            <div
+              style={{
+                padding: '48px 24px',
+                textAlign: 'center',
+                border: '1px dashed var(--outline-variant)',
+                borderRadius: 6,
+                background: 'rgba(26,34,52,0.3)',
+              }}
+            >
+              <p style={{ fontSize: 13, color: 'var(--outline)', fontFamily: 'var(--font-mono)', lineHeight: 1.6 }}>
+                No signals yet. Signals will appear here once the strategies are running on Delta Exchange.
+              </p>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 680 }}>
+                <thead>
+                  <tr>
+                    {['Time', 'Pair', 'Side', 'Confidence', 'R:R', 'Status'].map((col) => (
+                      <th
+                        key={col}
+                        style={{
+                          textAlign: 'left',
+                          padding: '8px 10px',
+                          fontSize: 10,
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 600,
+                          color: 'var(--outline)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.1em',
+                          borderBottom: '1px solid var(--outline-variant)',
+                        }}
+                      >
+                        {col}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredLogs.map((log) => {
+                    const isExpanded = expandedRowId === log.tradeId
+                    const confidencePct = (log.confidence >= 0 && log.confidence <= 1)
+                      ? log.confidence * 100
+                      : log.confidence
+                    return (
+                      <ExpandableRow
+                        key={log.tradeId}
+                        log={log}
+                        isExpanded={isExpanded}
+                        confidencePct={confidencePct}
+                        rr={riskReward(log)}
+                        onToggle={() => setExpandedRowId(isExpanded ? null : log.tradeId)}
+                      />
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
-                    {exec && (
-                      <div className="p-4" style={{ borderTop: '1px solid var(--outline-variant)', background: 'rgba(10,15,28,0.6)' }}>
-                        <p className="mb-3 text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--outline)' }}>
-                          Execution result
-                        </p>
-                        <div className="mb-3 flex flex-wrap items-center gap-3">
-                          <span
-                            className="rounded-md font-mono text-sm font-semibold px-2.5 py-1"
-                            style={{ ...signalBadgeStyle(signal), borderWidth: '1px', borderStyle: 'solid' }}
-                          >
-                            {signal}
-                          </span>
-                          <span className="text-sm" style={{ color: 'var(--on-surface-variant)' }}>
-                            Confidence
-                          </span>
-                          {(() => {
-                            const confPct =
-                              exec.confidence >= 0 && exec.confidence <= 1
-                                ? exec.confidence * 100
-                                : exec.confidence
-                            const w = Math.min(100, Math.max(0, confPct))
-                            return (
-                              <>
-                                <div className="h-2 flex-1 min-w-[120px] max-w-xs overflow-hidden rounded-full" style={{ background: 'var(--outline-variant)' }}>
-                                  <div
-                                    className="h-full rounded-full transition-all"
-                                    style={{ background: 'var(--primary)', width: `${w}%` }}
-                                  />
-                                </div>
-                                <span className="font-mono text-sm" style={{ color: 'var(--on-surface)' }}>
-                                  {w.toFixed(1)}%
-                                </span>
-                              </>
-                            )
-                          })()}
-                        </div>
-                        <p className="mb-4 text-sm leading-relaxed" style={{ color: 'var(--on-surface-variant)' }}>
-                          {exec.reasoning}
-                        </p>
-                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                          <div className="p-2 font-mono text-xs" style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}>
-                            <span style={{ color: 'var(--outline)' }}>Qty</span>{' '}
-                            <span style={{ color: 'var(--on-surface)' }}>
-                              {exec.quantity}
-                            </span>
-                          </div>
-                          <div className="p-2 font-mono text-xs" style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}>
-                            <span style={{ color: 'var(--outline)' }}>Price</span>{' '}
-                            <span style={{ color: 'var(--on-surface)' }}>
-                              {exec.price}
-                            </span>
-                          </div>
-                          <div className="p-2 font-mono text-xs" style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}>
-                            <span style={{ color: 'var(--outline)' }}>Success</span>{' '}
-                            <span
-                              style={{ color: exec.success ? 'var(--tertiary)' : 'var(--error)' }}
-                            >
-                              {String(exec.success)}
-                            </span>
-                          </div>
-                          {exec.metadata &&
-                            Object.entries(exec.metadata).map(([k, v]) => (
-                              <div
-                                key={k}
-                                className="p-2 font-mono text-xs sm:col-span-2 lg:col-span-3"
-                                style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}
-                              >
-                                <span style={{ color: 'var(--outline)' }}>{k}</span>
-                                <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all" style={{ color: 'var(--on-surface-variant)' }}>
-                                  {typeof v === 'object'
-                                    ? JSON.stringify(v, null, 2)
-                                    : String(v)}
-                                </pre>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    )}
-                  </article>
-                </li>
-              )
-            })}
-          </ul>
-        )}
+/* ─── Expandable Row Sub-component ─── */
+
+function ExpandableRow({
+  log,
+  isExpanded,
+  confidencePct,
+  rr,
+  onToggle,
+}: {
+  log: TradeLog
+  isExpanded: boolean
+  confidencePct: number
+  rr: string
+  onToggle: () => void
+}) {
+  const isLong = log.direction === 'BUY'
+
+  return (
+    <>
+      <tr
+        onClick={onToggle}
+        style={{
+          cursor: 'pointer',
+          borderBottom: isExpanded ? 'none' : '1px solid var(--outline-variant)',
+          transition: 'background var(--ease-fast)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(173,198,255,0.04)'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent'
+        }}
+      >
+        <td style={{ padding: '10px', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--on-surface-variant)', whiteSpace: 'nowrap' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {isExpanded
+              ? <ChevronDown style={{ width: 13, height: 13, color: 'var(--outline)' }} />
+              : <ChevronRight style={{ width: 13, height: 13, color: 'var(--outline)' }} />
+            }
+            {formatTime(log.createdAt)}
+          </span>
+        </td>
+        <td style={{ padding: '10px', fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--on-surface)' }}>
+          {log.symbol}
+        </td>
+        <td style={{ padding: '10px' }}>
+          <span
+            style={{
+              display: 'inline-block',
+              padding: '2px 8px',
+              borderRadius: 4,
+              fontSize: 11,
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 600,
+              background: isLong ? 'rgba(0,228,121,0.15)' : 'rgba(239,68,68,0.15)',
+              color: isLong ? 'var(--tertiary)' : 'var(--error)',
+              border: `1px solid ${isLong ? 'rgba(0,228,121,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            }}
+          >
+            {isLong ? 'LONG' : 'SHORT'}
+          </span>
+        </td>
+        <td style={{ padding: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ width: 48, height: 4, borderRadius: 2, background: 'var(--outline-variant)', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  borderRadius: 2,
+                  width: `${Math.min(100, Math.max(0, confidencePct))}%`,
+                  background: 'var(--primary)',
+                }}
+              />
+            </div>
+            <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--on-surface-variant)' }}>
+              {confidencePct.toFixed(0)}%
+            </span>
+          </div>
+        </td>
+        <td style={{ padding: '10px', fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--on-surface-variant)' }}>
+          {rr}
+        </td>
+        <td style={{ padding: '10px' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--on-surface-variant)' }}>
+            {statusIcon(log.status)}
+            {statusLabel(log.status)}
+          </span>
+        </td>
+      </tr>
+      {isExpanded && (
+        <tr>
+          <td colSpan={6} style={{ padding: 0, borderBottom: '1px solid var(--outline-variant)' }}>
+            <div
+              style={{
+                padding: '12px 16px 16px 32px',
+                background: 'rgba(10,15,28,0.5)',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: 10,
+              }}
+            >
+              {log.explanation?.bias && (
+                <ExplanationBlock title="Bias" text={log.explanation.bias} />
+              )}
+              {log.explanation?.zone && (
+                <ExplanationBlock title="Zone" text={log.explanation.zone} />
+              )}
+              {log.explanation?.entryTrigger && (
+                <ExplanationBlock title="Trigger" text={log.explanation.entryTrigger} />
+              )}
+              {log.explanation?.fundingContext && (
+                <ExplanationBlock title="Funding" text={log.explanation.fundingContext} />
+              )}
+              {log.explanation?.riskCalc && (
+                <ExplanationBlock title="Risk Calc" text={log.explanation.riskCalc} />
+              )}
+              {log.explanation?.lesson && (
+                <ExplanationBlock title="Lesson" text={log.explanation.lesson} />
+              )}
+              {!log.explanation?.bias && !log.explanation?.zone && !log.explanation?.entryTrigger && !log.explanation?.fundingContext && !log.explanation?.lesson && (
+                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--outline)' }}>
+                  No explanation data available.
+                </span>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
+function ExplanationBlock({ title, text }: { title: string; text: string }) {
+  return (
+    <div
+      style={{
+        padding: '8px 10px',
+        background: 'var(--surface-container-low)',
+        borderRadius: 4,
+        border: '1px solid var(--outline-variant)',
+      }}
+    >
+      <div
+        style={{
+          fontSize: 9,
+          fontFamily: 'var(--font-mono)',
+          fontWeight: 600,
+          color: 'var(--outline)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.1em',
+          marginBottom: 4,
+        }}
+      >
+        {title}
+      </div>
+      <div style={{ fontSize: 12, fontFamily: 'var(--font-body)', color: 'var(--on-surface-variant)', lineHeight: 1.5 }}>
+        {text}
       </div>
     </div>
   )

@@ -3,16 +3,12 @@ import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { useAuthStore } from '@/stores/authStore';
 
 const navItems = [
-  { label: 'Trading Floor', icon: 'dashboard', path: '/dashboard' },
-  { label: 'Market', icon: 'trending_up', path: '/market' },
+  { label: 'Dashboard', icon: 'dashboard', path: '/dashboard' },
+  { label: 'Trade', icon: 'candlestick_chart', path: '/trade' },
   { label: 'Strategies', icon: 'psychology', path: '/strategies' },
   { label: 'Backtest', icon: 'science', path: '/backtest' },
-  { label: 'Agents', icon: 'smart_toy', path: '/agents' },
-  { label: 'AI Intel', icon: 'auto_awesome', path: '/ai-intel' },
-  { label: 'Trading', icon: 'candlestick_chart', path: '/trading' },
+  { label: 'Trade Log', icon: 'menu_book', path: '/trade-log' },
   { label: 'Risk', icon: 'shield', path: '/risk' },
-  { label: 'ML Models', icon: 'model_training', path: '/ml' },
-  { label: 'Alerts', icon: 'notification_important', path: '/alerts' },
   { label: 'Settings', icon: 'settings', path: '/settings' },
 ];
 
