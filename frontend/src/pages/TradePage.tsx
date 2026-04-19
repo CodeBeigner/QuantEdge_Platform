@@ -7,7 +7,8 @@ import {
   ColorType,
   CrosshairMode,
 } from 'lightweight-charts';
-import type { IChartApi, CandlestickData, Time } from 'lightweight-charts';
+import type { IChartApi, Time } from 'lightweight-charts';
+import { api } from '@/services/api';
 
 /* ─── Constants ─── */
 const SYMBOLS = ['BTCUSD', 'ETHUSD', 'SOLUSD', 'XRPUSD'] as const;
@@ -25,45 +26,13 @@ type OrderType = (typeof ORDER_TYPES)[number];
 const TABS = ['Open Positions', 'Open Orders', 'Trade History'] as const;
 type Tab = (typeof TABS)[number];
 
-/* ─── Sample Data Generators ─── */
-function generateOHLCV(symbol: Symbol, tf: Timeframe, count = 100): CandlestickData<Time>[] {
-  const basePrices: Record<Symbol, number> = { BTCUSD: 67000, ETHUSD: 3450, SOLUSD: 145, XRPUSD: 0.52 };
-  const base = basePrices[symbol];
-  const volatility = base * 0.008;
-  const tfMinutes: Record<Timeframe, number> = { '15m': 15, '1h': 60, '4h': 240 };
-  const interval = tfMinutes[tf] * 60;
+/* ─── Symbol / Interval Helpers ─── */
+const toBinanceSymbol = (s: string): string => {
+  const map: Record<string, string> = { BTCUSD: 'BTCUSDT', ETHUSD: 'ETHUSDT', SOLUSD: 'SOLUSDT', XRPUSD: 'XRPUSDT' };
+  return map[s] || s;
+};
 
-  const now = Math.floor(Date.now() / 1000);
-  const startTime = now - count * interval;
-  const data: CandlestickData<Time>[] = [];
-  let price = base * (1 + (Math.random() - 0.5) * 0.02);
-
-  for (let i = 0; i < count; i++) {
-    const time = (startTime + i * interval) as Time;
-    const open = price;
-    const change1 = (Math.random() - 0.48) * volatility;
-    const change2 = (Math.random() - 0.48) * volatility;
-    const high = Math.max(open, open + change1, open + change2) + Math.random() * volatility * 0.3;
-    const low = Math.min(open, open + change1, open + change2) - Math.random() * volatility * 0.3;
-    const close = open + (Math.random() - 0.48) * volatility;
-    price = close;
-
-    data.push({
-      time,
-      open: round(open, symbol),
-      high: round(high, symbol),
-      low: round(low, symbol),
-      close: round(close, symbol),
-    });
-  }
-  return data;
-}
-
-function round(n: number, symbol: Symbol): number {
-  const decimals: Record<Symbol, number> = { BTCUSD: 1, ETHUSD: 2, SOLUSD: 2, XRPUSD: 4 };
-  const d = decimals[symbol];
-  return Math.round(n * 10 ** d) / 10 ** d;
-}
+const daysForTimeframe: Record<Timeframe, number> = { '15m': 3, '1h': 14, '4h': 60 };
 
 interface OrderBookLevel {
   price: number;
@@ -109,16 +78,6 @@ function generateOrderBook(symbol: Symbol): { asks: OrderBookLevel[]; bids: Orde
   return { asks, bids };
 }
 
-function generateVolumeData(candles: CandlestickData<Time>[]) {
-  return candles.map((c) => ({
-    time: c.time,
-    value: Math.round(Math.random() * 500 + 50),
-    color: (c.close as number) >= (c.open as number)
-      ? 'rgba(0, 228, 121, 0.3)'
-      : 'rgba(255, 180, 171, 0.3)',
-  }));
-}
-
 /* ─── Price Formatter ─── */
 function fmtPrice(n: number, symbol: Symbol): string {
   const decimals: Record<Symbol, number> = { BTCUSD: 1, ETHUSD: 2, SOLUSD: 2, XRPUSD: 4 };
@@ -144,6 +103,9 @@ function CandlestickChart({ symbol, timeframe }: { symbol: Symbol; timeframe: Ti
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<any>(null);
   const volumeSeriesRef = useRef<any>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Create chart once on mount
   useEffect(() => {
@@ -214,21 +176,135 @@ function CandlestickChart({ symbol, timeframe }: { symbol: Symbol; timeframe: Ti
     };
   }, []);
 
-  // Update data when symbol or timeframe changes
+  // Fetch real candle data when symbol or timeframe changes
   useEffect(() => {
     if (!candleSeriesRef.current || !volumeSeriesRef.current) return;
-    const candles = generateOHLCV(symbol, timeframe);
-    const volumes = generateVolumeData(candles);
-    candleSeriesRef.current.setData(candles);
-    volumeSeriesRef.current.setData(volumes);
-    chartRef.current?.timeScale().fitContent();
+
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    const binanceSymbol = toBinanceSymbol(symbol);
+    const days = daysForTimeframe[timeframe];
+
+    api.getCandles(binanceSymbol, timeframe, days)
+      .then((data) => {
+        if (cancelled) return;
+        if (!data || data.length === 0) {
+          setError('No candle data returned');
+          setLoading(false);
+          return;
+        }
+        candleSeriesRef.current?.setData(
+          data.map((d) => ({
+            time: d.time as Time,
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close,
+          }))
+        );
+        volumeSeriesRef.current?.setData(
+          data.map((d) => ({
+            time: d.time as Time,
+            value: d.volume,
+            color: d.close >= d.open
+              ? 'rgba(0, 228, 121, 0.3)'
+              : 'rgba(255, 180, 171, 0.3)',
+          }))
+        );
+        chartRef.current?.timeScale().fitContent();
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('Failed to fetch candle data:', err);
+        setError('Chart data unavailable');
+        setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [symbol, timeframe]);
+
+  const handleRetry = useCallback(() => {
+    // Trigger re-fetch by toggling a dummy state — instead we just re-run the effect
+    setError(null);
+    setLoading(true);
+    const binanceSymbol = toBinanceSymbol(symbol);
+    const days = daysForTimeframe[timeframe];
+
+    api.getCandles(binanceSymbol, timeframe, days)
+      .then((data) => {
+        if (!data || data.length === 0) {
+          setError('No candle data returned');
+          setLoading(false);
+          return;
+        }
+        candleSeriesRef.current?.setData(
+          data.map((d) => ({
+            time: d.time as Time,
+            open: d.open,
+            high: d.high,
+            low: d.low,
+            close: d.close,
+          }))
+        );
+        volumeSeriesRef.current?.setData(
+          data.map((d) => ({
+            time: d.time as Time,
+            value: d.volume,
+            color: d.close >= d.open
+              ? 'rgba(0, 228, 121, 0.3)'
+              : 'rgba(255, 180, 171, 0.3)',
+          }))
+        );
+        chartRef.current?.timeScale().fitContent();
+        setLoading(false);
+      })
+      .catch(() => {
+        setError('Chart data unavailable');
+        setLoading(false);
+      });
   }, [symbol, timeframe]);
 
   return (
     <div
       ref={containerRef}
-      style={{ width: '100%', height: '100%', minHeight: 300 }}
-    />
+      style={{ width: '100%', height: '100%', minHeight: 300, position: 'relative' }}
+    >
+      {/* Loading overlay */}
+      {loading && (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 10, background: 'rgba(26, 34, 53, 0.7)', pointerEvents: 'none',
+        }}>
+          <span style={{ fontFamily: monoFont, fontSize: '0.8125rem', color: textMuted }}>
+            Loading chart data...
+          </span>
+        </div>
+      )}
+
+      {/* Error overlay */}
+      {error && !loading && (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          zIndex: 10, background: 'rgba(26, 34, 53, 0.85)', gap: 12,
+        }}>
+          <span style={{ fontFamily: monoFont, fontSize: '0.8125rem', color: textMuted }}>
+            {error}
+          </span>
+          <button
+            onClick={handleRetry}
+            style={{
+              padding: '6px 16px', border: '1px solid rgba(66, 71, 84, 0.4)', background: 'var(--surface-container-highest)',
+              color: textPrimary, fontFamily: monoFont, fontSize: '0.75rem', cursor: 'pointer',
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

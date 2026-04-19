@@ -317,4 +317,10 @@ export const api = {
       method: 'POST', headers: headers(),
       body: JSON.stringify(config),
     }),
+
+  getCandles: (symbol: string, interval = '15m', days = 7) =>
+    request<Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>>(
+      `${API_BASE}/backtests/multi-tf/candles?symbol=${symbol}&interval=${interval}&days=${days}`,
+      { headers: headers() }
+    ),
 };
