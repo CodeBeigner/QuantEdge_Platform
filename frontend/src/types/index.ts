@@ -198,3 +198,103 @@ export interface WorkspaceLayout {
   name: string;
   panels: { id: string; component: string; position: { x: number; y: number; w: number; h: number } }[];
 }
+
+// === Phase 1-4 Types ===
+
+export interface RiskConfig {
+  id: number;
+  userId: number;
+  riskPerTradePct: number;
+  maxEffectiveLeverage: number;
+  dailyLossHaltPct: number;
+  maxDrawdownPct: number;
+  maxConcurrentPositions: number;
+  maxStopDistancePct: number;
+  minRiskRewardRatio: number;
+  feeImpactThreshold: number;
+  executionMode: 'AUTONOMOUS' | 'HUMAN_IN_LOOP';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SystemHealth {
+  status: string;
+  timestamp: string;
+  version: string;
+  components: {
+    strategies: { status: string; count: number };
+    riskEngine: { status: string };
+    telegram: { status: string };
+    account: { balance: number; peakEquity: number; openPositions: number };
+    fundingRate: { current: number; historySize: number };
+  };
+}
+
+export interface SystemVersion {
+  name: string;
+  version: string;
+  phase: string;
+}
+
+export interface DeltaConnectionStatus {
+  hasCredentials: boolean;
+  environment: string;
+}
+
+export interface TradeLog {
+  id: number;
+  userId: number;
+  tradeId: string;
+  symbol: string;
+  direction: 'BUY' | 'SELL';
+  strategyName: string;
+  entryPrice: number;
+  stopLossPrice: number;
+  takeProfitPrice: number;
+  positionSize: number;
+  effectiveLeverage: number;
+  confidence: number;
+  explanation: {
+    bias?: string;
+    zone?: string;
+    entryTrigger?: string;
+    fundingContext?: string;
+    riskCalc?: string;
+    lesson?: string;
+  };
+  outcome?: {
+    result: 'WIN' | 'LOSS';
+    pnl: number;
+    rMultiple: number;
+    exitPrice: number;
+    postTradeLesson?: string;
+  };
+  status: 'PENDING' | 'OPEN' | 'CLOSED' | 'CANCELLED';
+  executionMode: string;
+  openedAt: string;
+  closedAt?: string;
+  createdAt: string;
+}
+
+export interface MultiTFBacktestResult {
+  initialCapital: number;
+  finalCapital: number;
+  totalReturnPct: number;
+  sharpeRatio: number;
+  maxDrawdownPct: number;
+  winRate: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  profitFactor: number;
+  totalFees: number;
+  totalSlippage: number;
+  totalFundingPaid: number;
+  equityCurve: number[];
+  tradeLog: Record<string, unknown>[];
+  perStrategyWinRate: Record<string, number>;
+}
+
+export type StrategyModelType =
+  | 'MOMENTUM' | 'VOLATILITY' | 'MACRO' | 'CORRELATION' | 'REGIME'
+  | 'TREND_CONTINUATION' | 'MEAN_REVERSION' | 'FUNDING_SENTIMENT';

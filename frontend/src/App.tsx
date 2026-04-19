@@ -18,16 +18,12 @@ import NotificationPanel from '@/components/layout/NotificationPanel';
 import { AuthPage } from '@/pages/AuthPage';
 import { FirmSetupPage } from '@/pages/FirmSetupPage';
 import DashboardPage from '@/pages/DashboardPage';
-import MarketPage from '@/pages/MarketPage';
 import { StrategiesPage } from '@/pages/StrategiesPage';
 import { BacktestPage } from '@/pages/BacktestPage';
-import AgentsPage from '@/pages/AgentsPage';
-import AIIntelPage from '@/pages/AIIntelPage';
-import { OrdersPage } from '@/pages/OrdersPage';
 import RiskPage from '@/pages/RiskPage';
-import MLPage from '@/pages/MLPage';
-import AlertsPage from '@/pages/AlertsPage';
 import SettingsPage from '@/pages/SettingsPage';
+import TradePage from '@/pages/TradePage';
+import TradeLogPage from '@/pages/TradeLogPage';
 
 function AppLayout() {
   const { prices, connected } = useWebSocket();
@@ -158,15 +154,11 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="/firm-setup" element={<FirmSetupPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/market" element={<MarketPage />} />
+          <Route path="/trade" element={<TradePage />} />
           <Route path="/strategies" element={<StrategiesPage />} />
           <Route path="/backtest" element={<BacktestPage />} />
-          <Route path="/agents" element={<AgentsPage />} />
-          <Route path="/ai-intel" element={<AIIntelPage />} />
-          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/trade-log" element={<TradeLogPage />} />
           <Route path="/risk" element={<RiskPage />} />
-          <Route path="/ml" element={<MLPage />} />
-          <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

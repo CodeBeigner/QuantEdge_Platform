@@ -2,6 +2,7 @@ import type {
   User, MarketPrice, Strategy, ExecutionResult, BacktestResult,
   TradingAgent, Order, Position, Portfolio, RiskMetrics, Alert,
   FirmProfile, MLPrediction, PipelineResult, ChatMessage,
+  RiskConfig, SystemHealth, SystemVersion, DeltaConnectionStatus, TradeLog, MultiTFBacktestResult,
 } from '@/types';
 
 const API_BASE = '/api/v1';
@@ -264,4 +265,56 @@ export const api = {
   // Strategy Auto-Generation
   autoGenerateStrategy: (symbol: string) =>
     post<Record<string, unknown>>(`/strategies/auto-generate?symbol=${symbol}`),
+
+  // === Phase 1-4 APIs ===
+
+  getDeltaProducts: (testnet = true) =>
+    request<any>(`${API_BASE}/delta/products?testnet=${testnet}`, { headers: headers() }),
+
+  getDeltaTicker: (symbol: string, testnet = true) =>
+    request<any>(`${API_BASE}/delta/ticker/${symbol}?testnet=${testnet}`, { headers: headers() }),
+
+  getDeltaOrderBook: (productId: number, depth = 20, testnet = true) =>
+    request<any>(`${API_BASE}/delta/orderbook/${productId}?depth=${depth}&testnet=${testnet}`, { headers: headers() }),
+
+  saveDeltaCredentials: (apiKey: string, apiSecret: string, testnet = true) =>
+    request<{ status: string; environment: string }>(`${API_BASE}/delta/credentials`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ apiKey, apiSecret, testnet }),
+    }),
+
+  deleteDeltaCredentials: (testnet = true) =>
+    request<void>(`${API_BASE}/delta/credentials?testnet=${testnet}`, {
+      method: 'DELETE', headers: headers(),
+    }),
+
+  getDeltaConnectionStatus: (testnet = true) =>
+    request<DeltaConnectionStatus>(`${API_BASE}/delta/connection-status?testnet=${testnet}`, { headers: headers() }),
+
+  getRiskConfig: () =>
+    request<RiskConfig>(`${API_BASE}/risk-config`, { headers: headers() }),
+
+  updateRiskConfig: (config: Partial<RiskConfig>) =>
+    request<RiskConfig>(`${API_BASE}/risk-config`, {
+      method: 'PUT', headers: headers(),
+      body: JSON.stringify(config),
+    }),
+
+  getSystemHealth: () =>
+    request<SystemHealth>(`${API_BASE}/system/health`, { headers: headers() }),
+
+  getSystemVersion: () =>
+    request<SystemVersion>(`${API_BASE}/system/version`, { headers: headers() }),
+
+  getTradeLogs: () =>
+    request<TradeLog[]>(`${API_BASE}/trade-logs`, { headers: headers() }).catch(() => [] as TradeLog[]),
+
+  getTradeLog: (tradeId: string) =>
+    request<TradeLog>(`${API_BASE}/trade-logs/${tradeId}`, { headers: headers() }),
+
+  runMultiTFBacktest: (config: { initialCapital?: number; slippageBps?: number }) =>
+    request<MultiTFBacktestResult>(`${API_BASE}/backtests/multi-tf`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify(config),
+    }),
 };
