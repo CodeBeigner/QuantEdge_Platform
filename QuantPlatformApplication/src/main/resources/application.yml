@@ -96,3 +96,7 @@ telegram:
   chat-id: ${TELEGRAM_CHAT_ID:}
   enabled: ${TELEGRAM_ENABLED:false}
   signal-timeout-seconds: 120
+
+ml:
+  feature-collection:
+    enabled: ${ML_FEATURE_COLLECTION:false}
