@@ -1,5 +1,6 @@
 package com.QuantPlatformApplication.QuantPlatformApplication.controller;
 
+import com.QuantPlatformApplication.QuantPlatformApplication.client.BinanceHistoricalClient;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.BacktestConfig;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.Candle;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.MultiTimeFrameBacktestResult;
@@ -11,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +25,7 @@ import java.util.Random;
 public class MultiTimeFrameBacktestController {
 
     private final MultiTimeFrameBacktestService backtestService;
+    private final BinanceHistoricalClient binanceClient;
 
     @PostMapping
     public ResponseEntity<MultiTimeFrameBacktestResult> runBacktest(
@@ -33,24 +36,78 @@ public class MultiTimeFrameBacktestController {
         double slippage = request.containsKey("slippageBps")
             ? ((Number) request.get("slippageBps")).doubleValue() : 10;
 
+        String symbol = request.containsKey("symbol")
+            ? (String) request.get("symbol") : "BTCUSDT";
+        symbol = BinanceHistoricalClient.toBinanceSymbol(symbol);
+
+        LocalDate endDate = request.containsKey("endDate")
+            ? LocalDate.parse((String) request.get("endDate"))
+            : LocalDate.now();
+        LocalDate startDate = request.containsKey("startDate")
+            ? LocalDate.parse((String) request.get("startDate"))
+            : endDate.minusMonths(3);
+
         BacktestConfig config = BacktestConfig.builder()
             .initialCapital(capital)
             .slippageBps(slippage)
             .build();
 
-        // Generate realistic 15m candle data for backtesting
-        // TODO: Replace with real Delta Exchange historical data when available
-        List<Candle> candles = generateSampleCandles(2000);
-        log.info("Running backtest with {} sample 15m candles, ${} capital, {} bps slippage",
-            candles.size(), capital, slippage);
+        // Fetch real candles from Binance Futures
+        List<Candle> candles;
+        try {
+            candles = binanceClient.fetch15mCandles(symbol, startDate, endDate);
+        } catch (Exception e) {
+            log.warn("Binance fetch failed for {}: {}, falling back to sample data", symbol, e.getMessage());
+            candles = List.of();
+        }
+
+        // Fall back to sample data if Binance is unreachable or returned nothing
+        if (candles.isEmpty()) {
+            log.info("Using generated sample candles as fallback");
+            candles = generateSampleCandles(2000);
+        }
+
+        log.info("Running backtest with {} 15m candles for {}, ${} capital, {} bps slippage",
+            candles.size(), symbol, capital, slippage);
 
         MultiTimeFrameBacktestResult result = backtestService.runBacktest(candles, config);
         return ResponseEntity.ok(result);
     }
 
     /**
+     * Fetch raw candle data for frontend charts.
+     * GET /api/v1/backtests/multi-tf/candles?symbol=BTCUSDT&interval=15m&days=7
+     */
+    @GetMapping("/candles")
+    public ResponseEntity<List<Map<String, Object>>> getCandles(
+            @RequestParam(defaultValue = "BTCUSDT") String symbol,
+            @RequestParam(defaultValue = "15m") String interval,
+            @RequestParam(defaultValue = "7") int days) {
+
+        LocalDate to = LocalDate.now();
+        LocalDate from = to.minusDays(days);
+
+        List<Candle> candles = binanceClient.fetchCandles(
+            BinanceHistoricalClient.toBinanceSymbol(symbol), interval, from, to);
+
+        List<Map<String, Object>> result = candles.stream()
+            .map(c -> Map.<String, Object>of(
+                "time", c.timestamp().getEpochSecond(),
+                "open", c.open(),
+                "high", c.high(),
+                "low", c.low(),
+                "close", c.close(),
+                "volume", c.volume()
+            ))
+            .toList();
+
+        return ResponseEntity.ok(result);
+    }
+
+    /**
      * Generate realistic 15m crypto candle data with trends, mean reversion, and volatility clusters.
      * Uses random walk with drift, volatility clustering, and occasional trend changes.
+     * Kept as fallback when Binance API is unreachable.
      */
     private List<Candle> generateSampleCandles(int count) {
         List<Candle> candles = new ArrayList<>();
