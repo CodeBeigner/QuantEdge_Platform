@@ -25,6 +25,18 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      '/delta-testnet': {
+        target: 'https://cdn-ind.testnet.deltaex.org',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/delta-testnet/, ''),
+        secure: true,
+      },
+      '/delta-prod': {
+        target: 'https://api.india.delta.exchange',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/delta-prod/, ''),
+        secure: true,
+      },
     },
   },
 })

@@ -24,6 +24,7 @@ if (typeof window !== 'undefined') {
     if (e.metaKey || e.ctrlKey) parts.push('mod');
     if (e.shiftKey) parts.push('shift');
     if (e.altKey) parts.push('alt');
+    if (!e.key) return;
     parts.push(e.key.toLowerCase());
     const combo = parts.join('+');
 
