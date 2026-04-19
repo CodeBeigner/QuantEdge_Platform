@@ -493,7 +493,7 @@ export function BacktestPage() {
                           color: 'var(--on-surface)',
                         }}
                         labelFormatter={l => `Bar ${l}`}
-                        formatter={(value: number) => [fmtMoney(value), 'Equity']}
+                        formatter={(value: any) => [fmtMoney(Number(value)), 'Equity']}
                       />
                       <Area
                         type="monotone"

@@ -2,12 +2,12 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
   createChart,
-  candlestickSeries,
-  histogramSeries,
+  CandlestickSeries,
+  HistogramSeries,
   ColorType,
   CrosshairMode,
 } from 'lightweight-charts';
-import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts';
+import type { IChartApi, CandlestickData, Time } from 'lightweight-charts';
 
 /* ─── Constants ─── */
 const SYMBOLS = ['BTCUSD', 'ETHUSD', 'SOLUSD', 'XRPUSD'] as const;
@@ -142,8 +142,8 @@ const borderColor = 'var(--outline-variant)';
 function CandlestickChart({ symbol, timeframe }: { symbol: Symbol; timeframe: Timeframe }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const candleSeriesRef = useRef<any>(null);
+  const volumeSeriesRef = useRef<any>(null);
 
   // Create chart once on mount
   useEffect(() => {
@@ -177,7 +177,7 @@ function CandlestickChart({ symbol, timeframe }: { symbol: Symbol; timeframe: Ti
       handleScroll: { vertTouchDrag: false },
     });
 
-    const cSeries = chart.addSeries(candlestickSeries, {
+    const cSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#00e479',
       downColor: '#ff6b6b',
       borderUpColor: '#00e479',
@@ -186,7 +186,7 @@ function CandlestickChart({ symbol, timeframe }: { symbol: Symbol; timeframe: Ti
       wickDownColor: '#ff6b6b',
     });
 
-    const vSeries = chart.addSeries(histogramSeries, {
+    const vSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: 'volume' },
       priceScaleId: '',
     });
