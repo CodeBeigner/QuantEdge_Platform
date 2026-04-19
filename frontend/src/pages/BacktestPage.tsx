@@ -1,10 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Loader2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import { Loader2 } from 'lucide-react'
+import { useState } from 'react'
 import {
   Area,
   AreaChart,
-  CartesianGrid,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -12,10 +11,13 @@ import {
 } from 'recharts'
 import { api } from '@/services/api'
 import { PageHeader } from '@/components/ui/PageHeader'
-import type { BacktestResult } from '@/types'
+import { useNotificationStore } from '@/stores/notificationStore'
+import type { MultiTFBacktestResult } from '@/types'
 
-function pct(n: number) {
-  return `${(n * 100).toFixed(2)}%`
+/* ── helpers ─────────────────────────────────────────────────────── */
+
+function fmtPct(n: number) {
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`
 }
 
 function fmtMoney(n: number) {
@@ -26,256 +28,432 @@ function fmtMoney(n: number) {
   })
 }
 
+function fmtNum(n: number, decimals = 2) {
+  return n.toFixed(decimals)
+}
+
+/* ── strategy colors ─────────────────────────────────────────────── */
+
+const STRATEGY_META: Record<string, { label: string; color: string }> = {
+  trend_continuation: { label: 'Trend Continuation', color: '#00e479' },
+  mean_reversion: { label: 'Mean Reversion', color: '#3b82f6' },
+  funding_sentiment: { label: 'Funding Sentiment', color: '#f59e0b' },
+}
+
+function resolveStrategy(key: string) {
+  const lower = key.toLowerCase().replace(/[\s-]+/g, '_')
+  return STRATEGY_META[lower] ?? { label: key, color: '#94a3b8' }
+}
+
+/* ── shared inline style fragments ───────────────────────────────── */
+
+const inputStyle: React.CSSProperties = {
+  border: '1px solid var(--outline-variant)',
+  background: 'var(--surface)',
+  color: 'var(--on-surface)',
+  padding: '8px 12px',
+  fontFamily: 'var(--font-mono, monospace)',
+  fontSize: 13,
+  outline: 'none',
+  width: '100%',
+}
+
+const cardBg: React.CSSProperties = {
+  background: 'var(--surface-container-low)',
+  border: '1px solid var(--outline-variant)',
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   BacktestPage
+   ════════════════════════════════════════════════════════════════════ */
+
 export function BacktestPage() {
-  const queryClient = useQueryClient()
-  const [strategyId, setStrategyId] = useState<number | ''>('')
+  const addNotification = useNotificationStore(s => s.addNotification)
+
+  /* ── form state ────────────────────────────────────────────────── */
+  const [symbol, setSymbol] = useState('BTCUSD')
+  const [initialCapital, setInitialCapital] = useState(500)
+  const [slippageBps, setSlippageBps] = useState(10)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [initialCapital, setInitialCapital] = useState('100000')
-  const [lastResult, setLastResult] = useState<BacktestResult | null>(null)
-  const [walkForwardResult, setWalkForwardResult] = useState<Record<
-    string,
-    unknown
-  > | null>(null)
 
-  const { data: strategies = [], isLoading: strategiesLoading } = useQuery({
-    queryKey: ['strategies'],
-    queryFn: () => api.getStrategies(),
-  })
+  /* ── result state ──────────────────────────────────────────────── */
+  const [result, setResult] = useState<MultiTFBacktestResult | null>(null)
 
-  const sid = typeof strategyId === 'number' ? strategyId : null
+  /* ── trade log expansion ───────────────────────────────────────── */
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
 
-  const { data: history = [], isLoading: historyLoading } = useQuery({
-    queryKey: ['backtests', sid],
-    queryFn: () => api.getBacktests(sid!),
-    enabled: sid !== null,
-  })
+  function toggleRow(idx: number) {
+    setExpandedRows(prev => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
 
-  const sortedHistory = useMemo(
-    () =>
-      [...history].sort(
-        (a, b) =>
-          new Date(b.endDate).getTime() - new Date(a.endDate).getTime(),
-      ),
-    [history],
-  )
-
-  const backtestMutation = useMutation({
+  /* ── mutation ──────────────────────────────────────────────────── */
+  const mutation = useMutation({
     mutationFn: () =>
-      api.runBacktest(
-        sid!,
-        startDate,
-        endDate,
-        Number(initialCapital) || 0,
-      ),
+      api.runMultiTFBacktest({ initialCapital, slippageBps }),
     onSuccess: data => {
-      setLastResult(data)
-      if (sid !== null)
-        queryClient.invalidateQueries({ queryKey: ['backtests', sid] })
+      if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
+        addNotification({
+          type: 'info',
+          title: 'Backtest Engine Ready',
+          message:
+            'Connect to Delta Exchange to load historical data.',
+        })
+        setResult(null)
+        return
+      }
+      setResult(data)
+    },
+    onError: (err: Error) => {
+      addNotification({
+        type: 'error',
+        title: 'Backtest Failed',
+        message: err.message || 'Unknown error',
+      })
     },
   })
 
-  const walkForwardMutation = useMutation({
-    mutationFn: () => api.runWalkForward(sid!),
-    onSuccess: data => {
-      setWalkForwardResult(data)
-    },
-  })
+  /* ── equity curve data for Recharts ────────────────────────────── */
+  const equityChartData = (result?.equityCurve ?? []).map((v, i) => ({
+    idx: i,
+    value: v,
+  }))
 
-  const displayResult = lastResult
-  const chartData = displayResult?.equityCurve ?? []
+  /* ── per-strategy entries ──────────────────────────────────────── */
+  const strategyEntries = result?.perStrategyWinRate
+    ? Object.entries(result.perStrategyWinRate)
+    : []
 
-  const canSubmit =
-    sid !== null &&
-    startDate &&
-    endDate &&
-    !backtestMutation.isPending &&
-    !walkForwardMutation.isPending
+  /* ── KPI definitions ───────────────────────────────────────────── */
+  const kpis = result
+    ? [
+        {
+          label: 'Return %',
+          value: fmtPct(result.totalReturnPct),
+          color: result.totalReturnPct >= 0 ? '#00e479' : '#ffb4ab',
+        },
+        { label: 'Sharpe Ratio', value: fmtNum(result.sharpeRatio), color: '#60a5fa' },
+        { label: 'Max Drawdown %', value: fmtPct(-Math.abs(result.maxDrawdownPct)), color: '#ffb4ab' },
+        {
+          label: 'Win Rate %',
+          value: `${fmtNum(result.winRate * 100)}%`,
+          color: '#00e479',
+        },
+        { label: 'Profit Factor', value: fmtNum(result.profitFactor), color: '#c4b5fd' },
+        { label: 'Total Trades', value: String(result.totalTrades), color: '#e2e8f0' },
+        { label: 'Total Fees', value: fmtMoney(result.totalFees), color: '#fbbf24' },
+        { label: 'Funding Paid', value: fmtMoney(result.totalFundingPaid), color: '#fb923c' },
+      ]
+    : []
+
+  /* ════════════════════════════════════════════════════════════════
+     Render
+     ════════════════════════════════════════════════════════════════ */
 
   return (
     <div style={{ color: 'var(--on-surface)' }}>
-      <div className="mx-auto max-w-6xl">
-        <PageHeader title="Backtest" subtitle="STRATEGY SIMULATION // WALK-FORWARD ANALYSIS" />
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+        <PageHeader
+          title="Backtest"
+          subtitle="MULTI-TIMEFRAME ENGINE // 3-STRATEGY SIMULATION"
+        />
 
-        <section className="mb-8 p-6" style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}>
-          <h2 className="mb-4 text-sm font-medium uppercase tracking-wider" style={{ color: 'var(--outline)' }}>
+        {/* ── Config Bar ─────────────────────────────────────── */}
+        <section
+          style={{
+            ...cardBg,
+            padding: 24,
+            marginBottom: 32,
+          }}
+        >
+          <h2
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--outline)',
+              marginBottom: 16,
+            }}
+          >
             Configuration
           </h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <label className="flex flex-col gap-1.5 text-sm">
-              <span style={{ color: 'var(--on-surface-variant)' }}>Strategy</span>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+              gap: 16,
+            }}
+          >
+            {/* Symbol */}
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--on-surface-variant)' }}>
+                Symbol
+              </span>
               <select
-                value={strategyId === '' ? '' : String(strategyId)}
-                onChange={e => {
-                  const v = e.target.value
-                  setStrategyId(v === '' ? '' : Number(v))
-                  setLastResult(null)
-                  setWalkForwardResult(null)
-                }}
-                disabled={strategiesLoading}
-                className="px-3 py-2 font-mono outline-none disabled:opacity-50"
-                style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--on-surface)' }}
+                value={symbol}
+                onChange={e => setSymbol(e.target.value)}
+                style={{ ...inputStyle, cursor: 'pointer' }}
               >
-                <option value="">
-                  {strategiesLoading ? 'Loading...' : 'Select strategy'}
-                </option>
-                {strategies.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.symbol})
-                  </option>
-                ))}
+                <option value="BTCUSD">BTCUSD</option>
+                <option value="ETHUSD">ETHUSD</option>
               </select>
             </label>
-            <label className="flex flex-col gap-1.5 text-sm">
-              <span style={{ color: 'var(--on-surface-variant)' }}>Start date</span>
+
+            {/* Initial Capital */}
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--on-surface-variant)' }}>
+                Initial Capital ($)
+              </span>
+              <input
+                type="number"
+                min={0}
+                step={100}
+                value={initialCapital}
+                onChange={e => setInitialCapital(Number(e.target.value))}
+                style={inputStyle}
+              />
+            </label>
+
+            {/* Slippage */}
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--on-surface-variant)' }}>
+                Slippage (bps)
+              </span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={slippageBps}
+                onChange={e => setSlippageBps(Number(e.target.value))}
+                style={inputStyle}
+              />
+            </label>
+
+            {/* Start Date */}
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--on-surface-variant)' }}>
+                Start Date
+              </span>
               <input
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
-                className="px-3 py-2 font-mono outline-none"
-                style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--on-surface)' }}
+                style={inputStyle}
               />
             </label>
-            <label className="flex flex-col gap-1.5 text-sm">
-              <span style={{ color: 'var(--on-surface-variant)' }}>End date</span>
+
+            {/* End Date */}
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--on-surface-variant)' }}>
+                End Date
+              </span>
               <input
                 type="date"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
-                className="px-3 py-2 font-mono outline-none"
-                style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--on-surface)' }}
-              />
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm">
-              <span style={{ color: 'var(--on-surface-variant)' }}>Initial capital</span>
-              <input
-                type="number"
-                min={0}
-                step={1000}
-                value={initialCapital}
-                onChange={e => setInitialCapital(e.target.value)}
-                className="px-3 py-2 font-mono outline-none"
-                style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface)', color: 'var(--on-surface)' }}
+                style={inputStyle}
               />
             </label>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3">
+
+          {/* Run button */}
+          <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
             <button
               type="button"
-              disabled={!canSubmit}
-              onClick={() => backtestMutation.mutate()}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-[#00ff88] to-[#3b82f6] px-4 py-2 text-sm font-semibold disabled:opacity-50"
-              style={{ color: 'var(--surface)' }}
+              disabled={mutation.isPending}
+              onClick={() => mutation.mutate()}
+              style={{
+                background: 'linear-gradient(135deg, #00e479, #3b82f6)',
+                color: '#0a0a0f',
+                border: 'none',
+                padding: '10px 28px',
+                fontWeight: 600,
+                fontSize: 13,
+                cursor: mutation.isPending ? 'wait' : 'pointer',
+                opacity: mutation.isPending ? 0.7 : 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                letterSpacing: '0.02em',
+              }}
             >
-              {backtestMutation.isPending && (
-                <Loader2 className="h-4 w-4 animate-spin" />
+              {mutation.isPending && (
+                <Loader2
+                  style={{
+                    width: 16,
+                    height: 16,
+                    animation: 'spin 1s linear infinite',
+                  }}
+                />
               )}
               Run Backtest
             </button>
-            <button
-              type="button"
-              disabled={
-                sid === null ||
-                walkForwardMutation.isPending ||
-                backtestMutation.isPending
-              }
-              onClick={() => walkForwardMutation.mutate()}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50"
-              style={{ border: '1px solid rgba(34,211,238,0.6)', color: '#22d3ee', background: 'transparent' }}
-            >
-              {walkForwardMutation.isPending && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
-              Walk-Forward
-            </button>
+
+            {mutation.isPending && (
+              <span
+                style={{
+                  fontSize: 12,
+                  color: 'var(--on-surface-variant)',
+                  fontFamily: 'var(--font-mono, monospace)',
+                }}
+              >
+                Simulating across 3 strategies...
+              </span>
+            )}
           </div>
-          {(backtestMutation.isError || walkForwardMutation.isError) && (
-            <p className="mt-3 text-sm" style={{ color: 'var(--error)' }}>
-              {(backtestMutation.error as Error)?.message ||
-                (walkForwardMutation.error as Error)?.message}
+
+          {mutation.isError && (
+            <p style={{ marginTop: 12, fontSize: 13, color: 'var(--error)' }}>
+              {(mutation.error as Error)?.message}
             </p>
           )}
         </section>
 
-        {walkForwardResult && (
-          <section className="mb-8 p-4" style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}>
-            <h3 className="mb-2 text-sm font-medium" style={{ color: 'var(--on-surface-variant)' }}>
-              Walk-forward output
-            </h3>
-            <pre className="max-h-64 overflow-auto p-3 font-mono text-xs" style={{ background: 'var(--surface)', color: 'var(--on-surface-variant)' }}>
-              {JSON.stringify(walkForwardResult, null, 2)}
-            </pre>
-          </section>
+        {/* ── Initial State (before any run) ─────────────────── */}
+        {!result && !mutation.isPending && (
+          <div
+            style={{
+              ...cardBg,
+              padding: '64px 32px',
+              textAlign: 'center',
+              marginBottom: 32,
+            }}
+          >
+            <p
+              style={{
+                color: 'var(--on-surface-variant)',
+                fontSize: 14,
+                maxWidth: 560,
+                margin: '0 auto',
+                lineHeight: 1.7,
+              }}
+            >
+              Configure your backtest parameters and hit Run. The
+              multi-timeframe engine will simulate all 3 strategies with
+              realistic fees, slippage, and funding costs.
+            </p>
+          </div>
         )}
 
-        {displayResult && (
+        {/* ── Loading indicator ──────────────────────────────── */}
+        {mutation.isPending && (
+          <div
+            style={{
+              ...cardBg,
+              padding: '48px 32px',
+              textAlign: 'center',
+              marginBottom: 32,
+            }}
+          >
+            <Loader2
+              style={{
+                width: 32,
+                height: 32,
+                color: '#00e479',
+                margin: '0 auto 16px',
+                animation: 'spin 1s linear infinite',
+              }}
+            />
+            <p style={{ color: 'var(--on-surface-variant)', fontSize: 13 }}>
+              Running multi-timeframe backtest...
+            </p>
+          </div>
+        )}
+
+        {/* ── Results ────────────────────────────────────────── */}
+        {result && (
           <>
-            <section className="mb-6">
-              <h2 className="mb-4 flex items-center gap-2 text-lg font-medium" style={{ color: 'var(--on-surface)' }}>
-                <Activity className="h-5 w-5" style={{ color: 'var(--tertiary)' }} />
-                Results
-              </h2>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {[
-                  {
-                    label: 'Total Return',
-                    value: pct(displayResult.totalReturn),
-                  },
-                  {
-                    label: 'Sharpe Ratio',
-                    value: displayResult.sharpeRatio.toFixed(3),
-                  },
-                  {
-                    label: 'Max Drawdown',
-                    value: pct(displayResult.maxDrawdown),
-                  },
-                  {
-                    label: 'Win Rate',
-                    value: pct(displayResult.winRate),
-                  },
-                  {
-                    label: 'Total Trades',
-                    value: String(displayResult.totalTrades),
-                  },
-                  {
-                    label: 'Final Capital',
-                    value: fmtMoney(displayResult.finalCapital),
-                  },
-                ].map(m => (
+            {/* 8-KPI Row */}
+            <section style={{ marginBottom: 32 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                  gap: 12,
+                }}
+              >
+                {kpis.map(kpi => (
                   <div
-                    key={m.label}
-                    className="p-4"
-                    style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)' }}
+                    key={kpi.label}
+                    style={{
+                      ...cardBg,
+                      padding: '16px 20px',
+                    }}
                   >
-                    <p className="text-xs font-medium uppercase tracking-wider" style={{ color: 'var(--outline)' }}>
-                      {m.label}
+                    <p
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 500,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        color: 'var(--outline)',
+                        marginBottom: 8,
+                      }}
+                    >
+                      {kpi.label}
                     </p>
-                    <p className="mt-2 font-mono text-lg" style={{ color: 'var(--on-surface)' }}>
-                      {m.value}
+                    <p
+                      style={{
+                        fontFamily: 'var(--font-mono, monospace)',
+                        fontSize: 22,
+                        fontWeight: 600,
+                        color: kpi.color,
+                      }}
+                    >
+                      {kpi.value}
                     </p>
                   </div>
                 ))}
               </div>
             </section>
 
-            <section className="mb-10 p-4" style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface)' }}>
-              <h3 className="mb-4 text-sm font-medium" style={{ color: 'var(--on-surface-variant)' }}>
-                Equity curve
+            {/* Equity Curve */}
+            <section
+              style={{
+                ...cardBg,
+                padding: 24,
+                marginBottom: 32,
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: 12,
+                  fontWeight: 500,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: 'var(--on-surface-variant)',
+                  marginBottom: 16,
+                }}
+              >
+                Equity Curve
               </h3>
-              <div className="h-[320px] w-full">
-                {chartData.length === 0 ? (
-                  <p className="py-12 text-center" style={{ color: 'var(--outline)' }}>
-                    No equity curve points returned.
+              <div style={{ width: '100%', height: 340 }}>
+                {equityChartData.length === 0 ? (
+                  <p
+                    style={{
+                      textAlign: 'center',
+                      paddingTop: 64,
+                      color: 'var(--outline)',
+                    }}
+                  >
+                    No equity curve data returned.
                   </p>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                      data={chartData}
+                      data={equityChartData}
                       margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                     >
                       <defs>
                         <linearGradient
-                          id="equityGreen"
+                          id="eqGreen"
                           x1="0"
                           y1="0"
                           x2="0"
@@ -283,23 +461,18 @@ export function BacktestPage() {
                         >
                           <stop
                             offset="5%"
-                            stopColor="#00ff88"
-                            stopOpacity={0.35}
+                            stopColor="#00e479"
+                            stopOpacity={0.3}
                           />
                           <stop
                             offset="95%"
-                            stopColor="#00ff88"
+                            stopColor="#00e479"
                             stopOpacity={0}
                           />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke="var(--outline-variant)"
-                        vertical={false}
-                      />
                       <XAxis
-                        dataKey="date"
+                        dataKey="idx"
                         tick={{ fill: '#64748b', fontSize: 11 }}
                         tickLine={false}
                         axisLine={{ stroke: 'var(--outline-variant)' }}
@@ -309,84 +482,302 @@ export function BacktestPage() {
                         tickLine={false}
                         axisLine={{ stroke: 'var(--outline-variant)' }}
                         tickFormatter={v => fmtMoney(v)}
-                        width={72}
+                        width={80}
                       />
                       <Tooltip
                         contentStyle={{
                           background: 'var(--surface-container-low)',
                           border: '1px solid var(--outline-variant)',
-                          borderRadius: 8,
-                          fontFamily: 'var(--font-mono)',
+                          fontFamily: 'var(--font-mono, monospace)',
                           fontSize: 12,
                           color: 'var(--on-surface)',
                         }}
-                        labelStyle={{ color: 'var(--on-surface-variant)' }}
-                        formatter={value => {
-                          const n =
-                            typeof value === 'number'
-                              ? value
-                              : Number(value)
-                          return [
-                            fmtMoney(Number.isFinite(n) ? n : 0),
-                            'Value',
-                          ]
-                        }}
+                        labelFormatter={l => `Bar ${l}`}
+                        formatter={(value: number) => [fmtMoney(value), 'Equity']}
                       />
                       <Area
                         type="monotone"
                         dataKey="value"
-                        stroke="#00ff88"
+                        stroke="#00e479"
                         strokeWidth={2}
-                        fill="url(#equityGreen)"
+                        fill="url(#eqGreen)"
                       />
                     </AreaChart>
                   </ResponsiveContainer>
                 )}
               </div>
             </section>
+
+            {/* Per-Strategy Breakdown */}
+            {strategyEntries.length > 0 && (
+              <section style={{ marginBottom: 32 }}>
+                <h3
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 500,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    color: 'var(--on-surface-variant)',
+                    marginBottom: 16,
+                  }}
+                >
+                  Per-Strategy Breakdown
+                </h3>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                    gap: 16,
+                  }}
+                >
+                  {strategyEntries.map(([key, winRate]) => {
+                    const meta = resolveStrategy(key)
+                    return (
+                      <div
+                        key={key}
+                        style={{
+                          ...cardBg,
+                          borderLeft: `3px solid ${meta.color}`,
+                          padding: '20px 24px',
+                        }}
+                      >
+                        <p
+                          style={{
+                            fontWeight: 600,
+                            fontSize: 14,
+                            color: meta.color,
+                            marginBottom: 12,
+                          }}
+                        >
+                          {meta.label}
+                        </p>
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '1fr 1fr',
+                            gap: '8px 20px',
+                          }}
+                        >
+                          <div>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: 'var(--outline)',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              Win Rate
+                            </span>
+                            <p
+                              style={{
+                                fontFamily: 'var(--font-mono, monospace)',
+                                fontSize: 18,
+                                fontWeight: 600,
+                                color: 'var(--on-surface)',
+                              }}
+                            >
+                              {fmtNum(winRate * 100)}%
+                            </p>
+                          </div>
+                          <div>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: 'var(--outline)',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              Status
+                            </span>
+                            <p
+                              style={{
+                                fontFamily: 'var(--font-mono, monospace)',
+                                fontSize: 14,
+                                color: winRate >= 0.5 ? '#00e479' : '#ffb4ab',
+                                marginTop: 2,
+                              }}
+                            >
+                              {winRate >= 0.5 ? 'Profitable' : 'Review'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* Trade Log Table */}
+            <section style={{ marginBottom: 48 }}>
+              <h3
+                style={{
+                  fontSize: 12,
+                  fontWeight: 500,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: 'var(--on-surface-variant)',
+                  marginBottom: 16,
+                }}
+              >
+                Trade Log
+              </h3>
+
+              {(!result.tradeLog || result.tradeLog.length === 0) ? (
+                <div
+                  style={{
+                    ...cardBg,
+                    padding: '32px 24px',
+                    textAlign: 'center',
+                    color: 'var(--outline)',
+                    fontSize: 13,
+                  }}
+                >
+                  No trades recorded in this backtest.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table
+                    style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      fontFamily: 'var(--font-mono, monospace)',
+                      fontSize: 12,
+                    }}
+                  >
+                    <thead>
+                      <tr
+                        style={{
+                          borderBottom: '1px solid var(--outline-variant)',
+                          textAlign: 'left',
+                        }}
+                      >
+                        {['#', 'Side', 'Entry', 'Exit', 'PnL', 'Strategy'].map(
+                          h => (
+                            <th
+                              key={h}
+                              style={{
+                                padding: '10px 12px',
+                                fontSize: 11,
+                                fontWeight: 500,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                                color: 'var(--outline)',
+                              }}
+                            >
+                              {h}
+                            </th>
+                          ),
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.tradeLog.map((trade, idx) => {
+                        const side = String(trade.side ?? trade.direction ?? '-')
+                        const entry = Number(trade.entryPrice ?? trade.entry ?? 0)
+                        const exit = Number(trade.exitPrice ?? trade.exit ?? 0)
+                        const pnl = Number(trade.pnl ?? 0)
+                        const strat = String(trade.strategy ?? trade.strategyName ?? '-')
+                        const isExpanded = expandedRows.has(idx)
+
+                        return (
+                          <tr
+                            key={idx}
+                            onClick={() => toggleRow(idx)}
+                            style={{
+                              borderBottom: '1px solid var(--outline-variant)',
+                              cursor: 'pointer',
+                              background: isExpanded
+                                ? 'var(--surface-container-low)'
+                                : 'transparent',
+                            }}
+                          >
+                            <td style={{ padding: '10px 12px', color: 'var(--outline)' }}>
+                              {idx + 1}
+                            </td>
+                            <td
+                              style={{
+                                padding: '10px 12px',
+                                color:
+                                  side.toUpperCase() === 'BUY'
+                                    ? '#00e479'
+                                    : '#ffb4ab',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {side.toUpperCase()}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: 'var(--on-surface)' }}>
+                              {fmtMoney(entry)}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: 'var(--on-surface)' }}>
+                              {fmtMoney(exit)}
+                            </td>
+                            <td
+                              style={{
+                                padding: '10px 12px',
+                                color: pnl >= 0 ? '#00e479' : '#ffb4ab',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {fmtMoney(pnl)}
+                            </td>
+                            <td style={{ padding: '10px 12px', color: 'var(--on-surface-variant)' }}>
+                              {strat}
+                              {isExpanded && (
+                                <div
+                                  style={{
+                                    marginTop: 8,
+                                    fontSize: 11,
+                                    color: 'var(--outline)',
+                                    lineHeight: 1.6,
+                                  }}
+                                >
+                                  {Object.entries(trade)
+                                    .filter(
+                                      ([k]) =>
+                                        ![
+                                          'side',
+                                          'direction',
+                                          'entryPrice',
+                                          'entry',
+                                          'exitPrice',
+                                          'exit',
+                                          'pnl',
+                                          'strategy',
+                                          'strategyName',
+                                        ].includes(k),
+                                    )
+                                    .map(([k, v]) => (
+                                      <div key={k}>
+                                        <strong style={{ color: 'var(--on-surface-variant)' }}>
+                                          {k}:
+                                        </strong>{' '}
+                                        {String(v)}
+                                      </div>
+                                    ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
           </>
         )}
-
-        <section>
-          <h2 className="mb-4 text-lg font-medium" style={{ color: 'var(--on-surface)' }}>
-            Historical backtests
-          </h2>
-          {sid === null ? (
-            <p style={{ color: 'var(--outline)' }}>Select a strategy to load history.</p>
-          ) : historyLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin" style={{ color: 'var(--tertiary)' }} />
-            </div>
-          ) : sortedHistory.length === 0 ? (
-            <p style={{ color: 'var(--outline)' }}>No backtests recorded for this strategy.</p>
-          ) : (
-            <ul className="space-y-2">
-              {sortedHistory.map(h => (
-                <li
-                  key={h.id}
-                  className="px-4 py-3 font-mono text-sm"
-                  style={{ border: '1px solid var(--outline-variant)', background: 'var(--surface-container-low)', color: 'var(--on-surface-variant)' }}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span style={{ color: 'var(--on-surface)' }}>
-                      {h.startDate} → {h.endDate}
-                    </span>
-                    <span style={{ color: 'var(--tertiary)' }}>
-                      Return {pct(h.totalReturn)}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--outline)' }}>
-                    <span>Sharpe {h.sharpeRatio.toFixed(2)}</span>
-                    <span>Max DD {pct(h.maxDrawdown)}</span>
-                    <span>Trades {h.totalTrades}</span>
-                    <span>Final {fmtMoney(h.finalCapital)}</span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       </div>
+
+      {/* keyframe for Loader2 spin */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   )
 }
