@@ -1,0 +1,39 @@
+# .github/workflows/test.yml
+name: Run Tests
+
+on:
+  push:
+    branches: [main, sanity-1]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+
+      - name: Run unit tests
+        working-directory: QuantPlatformApplication
+        run: |
+          ./mvnw test -Dtest="CandleAggregatorTest,IndicatorCalculatorTest,TradeRiskEngineTest,EncryptionConfigTest,DeltaExchangeClientTest,SwingDetectorTest,TrendContinuationStrategyTest,MeanReversionStrategyTest,FundingSentimentStrategyTest,StrategyOrchestratorTest,TelegramBotServiceTest,AccountStateTrackerTest,FundingRateTrackerTest,MultiTimeFrameBacktestEngineTest" -pl .
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: QuantPlatformApplication/target/surefire-reports/
