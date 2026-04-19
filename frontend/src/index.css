@@ -481,3 +481,16 @@
 @media (max-width: 600px) {
   .grid-4-responsive, .grid-3-responsive, .grid-2-responsive { grid-template-columns: 1fr !important; }
 }
+
+/* ── Dashboard KPI Ticker Grid ── */
+@media (max-width: 768px) {
+  .kpi-ticker-grid { grid-template-columns: repeat(3, 1fr) !important; }
+}
+@media (max-width: 480px) {
+  .kpi-ticker-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+/* ── Dashboard 2x2 Grid ── */
+@media (max-width: 768px) {
+  .grid-2x2-responsive { grid-template-columns: 1fr !important; }
+}
