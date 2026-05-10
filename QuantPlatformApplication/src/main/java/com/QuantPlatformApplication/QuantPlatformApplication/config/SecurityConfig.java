@@ -54,6 +54,10 @@ public class SecurityConfig {
 
                 // Authorization rules
                 .authorizeHttpRequests(auth -> auth
+                        // Admin endpoints — always require authentication
+                        // (declared before permitAll list so it can't be widened by accident)
+                        .requestMatchers("/api/v1/admin/**").authenticated()
+
                         // Public endpoints — no token required
                         .requestMatchers(
                                 "/api/v1/auth/**", // register + login
