@@ -98,3 +98,49 @@ def test_build_funding_url():
         "https://data.binance.vision/data/futures/um/monthly/fundingRate/"
         "BTCUSDT/BTCUSDT-fundingRate-2024-01.zip"
     )
+
+
+def test_parse_funding_csv_basic():
+    """parse_funding_csv on a trimmed Binance funding ZIP must return canonical 4 cols."""
+    csv_path = FIXTURE_DIR / "BTCUSDT-fundingRate-2024-01.csv"
+    zip_bytes = _wrap_in_zip(csv_path)
+
+    df = parse_funding_csv(zip_bytes, symbol="BTCUSDT")
+
+    assert list(df.columns) == ["time", "symbol", "funding_rate", "mark_price"]
+    assert len(df) == 4
+    assert df["symbol"].unique().tolist() == ["BTCUSDT"]
+    assert str(df["time"].iloc[0]) == "2024-01-01 00:00:00+00:00"
+    assert df["funding_rate"].iloc[0] == pytest.approx(0.0001)
+    # mark_price is NA — Binance funding dumps don't include it
+    assert pd.isna(df["mark_price"].iloc[0])
+
+
+def test_parse_funding_csv_rejects_duplicate_timestamps():
+    """Duplicate calc_time values must raise."""
+    rows = [
+        "1704067200000,8,0.0001",
+        "1704067200000,8,0.0002",  # same timestamp
+    ]
+    bad_csv = "\n".join(rows).encode()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("bad.csv", bad_csv)
+
+    with pytest.raises(ValueError, match="duplicate"):
+        parse_funding_csv(buf.getvalue(), symbol="BTCUSDT")
+
+
+def test_parse_klines_csv_rejects_duplicate_timestamps():
+    """Duplicate open_time values must raise even if monotonic holds trivially."""
+    rows = [
+        "1704067200000,100,101,99,100,10,1704068099999,1000,10,5,500,0",
+        "1704067200000,100,101,99,100,10,1704068099999,1000,10,5,500,0",
+    ]
+    bad_csv = "\n".join(rows).encode()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("bad.csv", bad_csv)
+
+    with pytest.raises(ValueError, match="duplicate"):
+        parse_klines_csv(buf.getvalue(), symbol="BTCUSDT", timeframe="15m")

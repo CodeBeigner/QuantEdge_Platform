@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import logging
+import time
 import zipfile
 from typing import Optional
 
@@ -54,6 +55,9 @@ def download(url: str, timeout: int = 30, max_retries: int = 3) -> Optional[byte
         except requests.RequestException as exc:
             last_exc = exc
             log.warning("Attempt %d failed for %s: %s", attempt + 1, url, exc)
+            if attempt < max_retries - 1:
+                sleep_sec = 2 ** attempt
+                time.sleep(sleep_sec)
     raise RuntimeError(f"Failed to download after {max_retries} attempts: {url}") from last_exc
 
 
@@ -93,6 +97,9 @@ def parse_klines_csv(zip_bytes: bytes, symbol: str, timeframe: str) -> pd.DataFr
     if not df["open_time"].is_monotonic_increasing:
         raise ValueError("non-monotonic open_time")
 
+    if df["open_time"].duplicated().any():
+        raise ValueError("duplicate timestamps")
+
     out = pd.DataFrame({
         "time": pd.to_datetime(df["open_time"], unit="ms", utc=True),
         "symbol": symbol,
@@ -117,6 +124,12 @@ def parse_funding_csv(zip_bytes: bytes, symbol: str) -> pd.DataFrame:
 
     if df[["calc_time", "last_funding_rate"]].isna().any().any():
         raise ValueError("NaN in funding columns")
+
+    if not df["calc_time"].is_monotonic_increasing:
+        raise ValueError("non-monotonic calc_time")
+
+    if df["calc_time"].duplicated().any():
+        raise ValueError("duplicate timestamps")
 
     out = pd.DataFrame({
         "time": pd.to_datetime(df["calc_time"], unit="ms", utc=True),
