@@ -85,36 +85,48 @@ def plan_funding_urls(symbols: List[str], start: date, end: date) -> List[Fundin
     return jobs
 
 
-def run_klines(jobs: List[KlineJob]) -> int:
+def run_klines(jobs: List[KlineJob]) -> tuple[int, int]:
     total_inserted = 0
+    failures = 0
     with connect() as conn:
         for job in jobs:
-            data = download(job.url)
-            if data is None:
-                log.info("skip (404): %s %s %d-%02d", job.symbol, job.timeframe, job.year, job.month)
-                continue
-            df = parse_klines_csv(data, job.symbol, job.timeframe)
-            inserted = upsert_market_data(conn, df)
-            total_inserted += inserted
-            log.info("inserted %d rows for %s %s %d-%02d (have %d)",
-                     inserted, job.symbol, job.timeframe, job.year, job.month, len(df))
-    return total_inserted
+            try:
+                data = download(job.url)
+                if data is None:
+                    log.info("skip (404): %s %s %d-%02d", job.symbol, job.timeframe, job.year, job.month)
+                    continue
+                df = parse_klines_csv(data, job.symbol, job.timeframe)
+                inserted = upsert_market_data(conn, df)
+                total_inserted += inserted
+                log.info("inserted %d rows for %s %s %d-%02d (have %d)",
+                         inserted, job.symbol, job.timeframe, job.year, job.month, len(df))
+            except Exception as exc:
+                log.warning("FAILED %s %s %d-%02d: %s", job.symbol, job.timeframe, job.year, job.month, exc)
+                failures += 1
+    log.info("run_klines complete: %d inserted, %d jobs failed", total_inserted, failures)
+    return total_inserted, failures
 
 
-def run_funding(jobs: List[FundingJob]) -> int:
+def run_funding(jobs: List[FundingJob]) -> tuple[int, int]:
     total_inserted = 0
+    failures = 0
     with connect() as conn:
         for job in jobs:
-            data = download(job.url)
-            if data is None:
-                log.info("skip (404): %s funding %d-%02d", job.symbol, job.year, job.month)
-                continue
-            df = parse_funding_csv(data, job.symbol)
-            inserted = upsert_funding_rate(conn, df)
-            total_inserted += inserted
-            log.info("inserted %d rows for %s funding %d-%02d (have %d)",
-                     inserted, job.symbol, job.year, job.month, len(df))
-    return total_inserted
+            try:
+                data = download(job.url)
+                if data is None:
+                    log.info("skip (404): %s funding %d-%02d", job.symbol, job.year, job.month)
+                    continue
+                df = parse_funding_csv(data, job.symbol)
+                inserted = upsert_funding_rate(conn, df)
+                total_inserted += inserted
+                log.info("inserted %d rows for %s funding %d-%02d (have %d)",
+                         inserted, job.symbol, job.year, job.month, len(df))
+            except Exception as exc:
+                log.warning("FAILED %s %d-%02d: %s", job.symbol, job.year, job.month, exc)
+                failures += 1
+    log.info("run_funding complete: %d inserted, %d jobs failed", total_inserted, failures)
+    return total_inserted, failures
 
 
 def _parse_month(arg: str) -> date:
@@ -158,11 +170,13 @@ def main(argv: List[str] | None = None) -> int:
             print(j.url)
         return 0
 
-    klines_inserted = run_klines(klines_jobs) if klines_jobs else 0
-    funding_inserted = run_funding(funding_jobs) if funding_jobs else 0
+    klines_inserted, klines_failures = run_klines(klines_jobs) if klines_jobs else (0, 0)
+    funding_inserted, funding_failures = run_funding(funding_jobs) if funding_jobs else (0, 0)
 
-    log.info("Done. Inserted %d klines rows, %d funding rows.",
-             klines_inserted, funding_inserted)
+    log.info(
+        "Done. Klines: %d rows, %d failures. Funding: %d rows, %d failures.",
+        klines_inserted, klines_failures, funding_inserted, funding_failures,
+    )
     return 0
 
 
