@@ -45,6 +45,7 @@ def upsert_market_data(conn, df: pd.DataFrame) -> int:
     buf.seek(0)
 
     with conn.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS staging_market_data")
         cur.execute(
             "CREATE TEMP TABLE staging_market_data "
             "(LIKE market_data INCLUDING DEFAULTS) ON COMMIT DROP"
@@ -81,6 +82,7 @@ def upsert_funding_rate(conn, df: pd.DataFrame) -> int:
     buf.seek(0)
 
     with conn.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS staging_funding")
         cur.execute(
             "CREATE TEMP TABLE staging_funding "
             "(LIKE funding_rate_history INCLUDING DEFAULTS) ON COMMIT DROP"
