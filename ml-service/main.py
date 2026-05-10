@@ -51,6 +51,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Legacy/deprecated endpoints ───────────────────────────────
+# The /train, /predict, /train-lstm, /predict-lstm, /predict-ensemble, /ic
+# endpoints rely on the look-ahead target that was removed from
+# feature_engine.py in the foundation rebuild. They remain callable so that
+# IntentParserService (user-facing chat) doesn't 404, but they will raise at
+# train time because the target column no longer exists. Do NOT wire these
+# into the trading path — use /predict-meta (Plan 2) instead.
+DEPRECATED_ENDPOINTS = {
+    "/train/{symbol}", "/predict/{symbol}",
+    "/train-lstm/{symbol}", "/predict-lstm/{symbol}",
+    "/predict-ensemble/{symbol}", "/ic/{symbol}",
+}
+
+
+@app.middleware("http")
+async def add_deprecation_header(request, call_next):
+    response = await call_next(request)
+    route = request.scope.get("route")
+    if route is not None and getattr(route, "path", None) in DEPRECATED_ENDPOINTS:
+        response.headers["X-Deprecated"] = "true"
+        log.warning("Deprecated endpoint called: %s", route.path)
+    return response
+
 # Global model instances per symbol
 models: dict[str, SignalModel] = {}
 lstm_models: dict[str, LSTMSignalModel] = {}

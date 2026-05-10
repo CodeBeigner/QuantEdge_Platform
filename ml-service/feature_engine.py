@@ -75,8 +75,9 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     df['returns_20d'] = close.pct_change(20)
     df['volatility_20d'] = close.pct_change().rolling(20).std()
 
-    # ── Target: next-day return direction ──────────────────
-    df['target'] = (close.shift(-1) > close).astype(int)
+    # NOTE: Target labeling is intentionally NOT done here.
+    # Labels are the caller's responsibility — use ingest/labelers to
+    # produce path-aware (triple-barrier) labels without look-ahead bias.
 
     return df
 
