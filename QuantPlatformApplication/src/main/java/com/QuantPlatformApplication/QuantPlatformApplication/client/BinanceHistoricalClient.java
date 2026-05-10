@@ -135,6 +135,52 @@ public class BinanceHistoricalClient {
     }
 
     /**
+     * Unified fetcher with Instant parameters. Supports 15m/1h/4h.
+     * Used by the gap-filler scheduler to fetch recent data.
+     */
+    public List<Candle> fetchCandles(String symbol, String timeframe,
+                                      Instant since, Instant until) {
+        LocalDate fromDate = LocalDate.ofInstant(since, ZoneOffset.UTC);
+        LocalDate toDate = LocalDate.ofInstant(until, ZoneOffset.UTC);
+        return fetchCandles(symbol, timeframe, fromDate, toDate);
+    }
+
+    /**
+     * Batch upsert of fetched candles into market_data.
+     * Uses JdbcTemplate batchUpdate with ON CONFLICT DO NOTHING so re-runs are safe.
+     */
+    public int persistToMarketData(
+            String symbol, String timeframe,
+            List<Candle> candles,
+            org.springframework.jdbc.core.JdbcTemplate jdbc) {
+        if (candles == null || candles.isEmpty()) return 0;
+
+        String binanceSymbol = toBinanceSymbol(symbol);
+        String sql = "INSERT INTO market_data (time, symbol, timeframe, open, high, low, close, volume) "
+                   + "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                   + "ON CONFLICT (symbol, timeframe, time) DO NOTHING";
+
+        int[] results = jdbc.batchUpdate(sql, new org.springframework.jdbc.core.BatchPreparedStatementSetter() {
+            public void setValues(java.sql.PreparedStatement ps, int i) throws java.sql.SQLException {
+                Candle c = candles.get(i);
+                ps.setObject(1, java.sql.Timestamp.from(c.timestamp()));
+                ps.setString(2, binanceSymbol);
+                ps.setString(3, timeframe);
+                ps.setDouble(4, c.open());
+                ps.setDouble(5, c.high());
+                ps.setDouble(6, c.low());
+                ps.setDouble(7, c.close());
+                ps.setDouble(8, c.volume());
+            }
+            public int getBatchSize() { return candles.size(); }
+        });
+
+        int inserted = 0;
+        for (int r : results) inserted += (r > 0 ? 1 : 0);
+        return inserted;
+    }
+
+    /**
      * Map Binance symbol from our internal format.
      * Our system uses "BTCUSD" but Binance uses "BTCUSDT".
      */
