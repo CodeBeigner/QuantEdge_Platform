@@ -47,6 +47,14 @@ public interface MarketDataRepository extends JpaRepository<MarketDataEntity, Ma
             @Param("limit") int limit);
 
     /**
+     * Back-compat overload: defaults to 15m timeframe.
+     * Existing callers (order fill, VaR, price publisher) use 15m implicitly.
+     */
+    default List<MarketDataEntity> findRecentBySymbol(String symbol, int limit) {
+        return findRecentBySymbolAndTimeframe(symbol, "15m", limit);
+    }
+
+    /**
      * List all distinct symbols in the market_data table.
      * Useful for the /symbols endpoint and data discovery.
      */
