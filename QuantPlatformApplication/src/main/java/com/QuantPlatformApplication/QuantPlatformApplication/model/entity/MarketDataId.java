@@ -10,7 +10,7 @@ import java.util.Objects;
 
 /**
  * Composite primary key for MarketDataEntity.
- * The market_data table uses (symbol, time) as its primary key.
+ * The market_data table uses (symbol, timeframe, time) as its primary key.
  */
 @Data
 @NoArgsConstructor
@@ -18,6 +18,7 @@ import java.util.Objects;
 public class MarketDataId implements Serializable {
 
     private String symbol;
+    private String timeframe;
     private Instant time;
 
     @Override
@@ -27,11 +28,13 @@ public class MarketDataId implements Serializable {
         if (o == null || getClass() != o.getClass())
             return false;
         MarketDataId that = (MarketDataId) o;
-        return Objects.equals(symbol, that.symbol) && Objects.equals(time, that.time);
+        return Objects.equals(symbol, that.symbol)
+            && Objects.equals(timeframe, that.timeframe)
+            && Objects.equals(time, that.time);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(symbol, time);
+        return Objects.hash(symbol, timeframe, time);
     }
 }

@@ -109,6 +109,7 @@ public class YahooFinanceClient {
                 entities.add(MarketDataEntity.builder()
                         .time(Instant.ofEpochSecond(timestamps.get(i).longValue()))
                         .symbol(symbol.toUpperCase())
+                        .timeframe("15m")  // Default timeframe for Yahoo Finance data
                         .open(toBigDecimal(opens.get(i)))
                         .high(toBigDecimal(highs.get(i)))
                         .low(toBigDecimal(lows.get(i)))

@@ -20,14 +20,15 @@ import java.util.List;
 public interface MarketDataRepository extends JpaRepository<MarketDataEntity, MarketDataId> {
 
     /**
-     * Fetch all OHLCV data for a symbol within a date range, ordered
+     * Fetch all OHLCV data for a symbol + timeframe within a date range, ordered
      * chronologically.
      * Spring Data JPA generates the query automatically from the method name.
      */
-    List<MarketDataEntity> findBySymbolAndTimeBetweenOrderByTimeAsc(String symbol, Instant start, Instant end);
+    List<MarketDataEntity> findBySymbolAndTimeframeAndTimeBetweenOrderByTimeAsc(
+            String symbol, String timeframe, Instant start, Instant end);
 
     /**
-     * Fetch the most recent N rows for a given symbol.
+     * Fetch the most recent N rows for a given symbol + timeframe.
      * Uses native SQL with ORDER BY + LIMIT for efficient pagination on
      * TimescaleDB.
 
@@ -36,12 +37,13 @@ public interface MarketDataRepository extends JpaRepository<MarketDataEntity, Ma
      */
     @Query(value = """
             SELECT * FROM market_data
-            WHERE symbol = :symbol
+            WHERE symbol = :symbol AND timeframe = :timeframe
             ORDER BY time DESC
             LIMIT :limit
             """, nativeQuery = true)
-    List<MarketDataEntity> findRecentBySymbol(
+    List<MarketDataEntity> findRecentBySymbolAndTimeframe(
             @Param("symbol") String symbol,
+            @Param("timeframe") String timeframe,
             @Param("limit") int limit);
 
     /**
@@ -52,13 +54,13 @@ public interface MarketDataRepository extends JpaRepository<MarketDataEntity, Ma
     List<String> findDistinctSymbols();
 
     /**
-     * Check if any data exists for a given symbol.
+     * Check if any data exists for a given symbol + timeframe.
      * Used by the seeder to avoid duplicate inserts.
      */
-    boolean existsBySymbol(String symbol);
+    boolean existsBySymbolAndTimeframe(String symbol, String timeframe);
 
     /**
-     * Count rows for a given symbol (useful for diagnostics).
+     * Count rows for a given symbol + timeframe (useful for diagnostics).
      */
-    long countBySymbol(String symbol);
+    long countBySymbolAndTimeframe(String symbol, String timeframe);
 }
