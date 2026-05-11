@@ -544,8 +544,14 @@ class PredictFlowRequest(BaseModel):
 
 
 @app.post("/train-meta/{symbol}")
-async def train_meta(symbol: str, days: int = 500):
-    """Train the triple-barrier meta-labeler on historical bars for {symbol}."""
+async def train_meta(symbol: str, days: int = 5000):
+    """Train the triple-barrier meta-labeler on historical bars for {symbol}.
+
+    NOTE: `days` here is actually rows, not calendar days — the Java backend's
+    /market-data/prices endpoint LIMITs by row count. At 15m cadence, 10000
+    rows ≈ 104 calendar days, which typically yields >50 SMA-crossover primary
+    signals and a trainable meta-labeler frame.
+    """
     df = await fetch_market_data(symbol, days)
     enriched = enrich_with_derivatives(df, funding=None, oi=None)
     featured = compute_features(enriched)
@@ -608,7 +614,8 @@ async def predict_meta(symbol: str, req: PredictMetaRequest):
 
 
 @app.post("/train-flow/{symbol}")
-async def train_flow(symbol: str, days: int = 500):
+async def train_flow(symbol: str, days: int = 5000):
+    """Train the order-flow model. `days` is really a row LIMIT (15m bars)."""
     df = await fetch_market_data(symbol, days)
     enriched = enrich_with_derivatives(df, funding=None, oi=None)
 
