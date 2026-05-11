@@ -52,5 +52,6 @@ public class MarketDataEntity implements java.io.Serializable {
     @Column(name = "close", precision = 15, scale = 4)
     private BigDecimal close;
 
-    private Long volume;
+    @Column(precision = 20, scale = 8)
+    private BigDecimal volume;
 }

@@ -114,7 +114,7 @@ public class YahooFinanceClient {
                         .high(toBigDecimal(highs.get(i)))
                         .low(toBigDecimal(lows.get(i)))
                         .close(toBigDecimal(closes.get(i)))
-                        .volume(volumes.get(i) != null ? volumes.get(i).longValue() : 0L)
+                        .volume(volumes.get(i) != null ? BigDecimal.valueOf(volumes.get(i).doubleValue()) : BigDecimal.ZERO)
                         .build());
             }
 

@@ -94,7 +94,7 @@ public class DataSeederService implements CommandLineRunner {
             entity.setHigh(BigDecimal.valueOf(round(high)));
             entity.setLow(BigDecimal.valueOf(round(low)));
             entity.setClose(BigDecimal.valueOf(round(close)));
-            entity.setVolume(volume);
+            entity.setVolume(BigDecimal.valueOf(volume));
 
             batch.add(entity);
             price = close;
