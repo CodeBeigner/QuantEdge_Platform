@@ -37,11 +37,11 @@ def replay_momentum_primary(bars: pd.DataFrame, fast: int = 10, slow: int = 50) 
     short_mask = cross_dn & fast_ma.notna() & slow_ma.notna()
 
     longs = pd.DataFrame({
-        "time": bars.loc[long_mask, "time"].values,
+        "time": bars.loc[long_mask, "time"].reset_index(drop=True),
         "direction": 1,
     })
     shorts = pd.DataFrame({
-        "time": bars.loc[short_mask, "time"].values,
+        "time": bars.loc[short_mask, "time"].reset_index(drop=True),
         "direction": -1,
     })
 

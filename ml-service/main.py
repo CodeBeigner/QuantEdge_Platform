@@ -32,6 +32,12 @@ from typing import List, Optional
 from scipy import stats
 
 from feature_engine import compute_features, FEATURE_COLS
+from ml_models.feature_enrichment import enrich_with_derivatives, ENRICHED_COLS
+from ml_models.meta_labeler import MetaLabeler
+from ml_models.order_flow import OrderFlowModel, FLOW_FEATURE_COLS, compute_flow_features
+from ml_models.primary_signals import replay_momentum_primary
+from ml_models.registry import ModelRegistry
+from labelers.triple_barrier import apply_triple_barrier
 from model import SignalModel, LSTMSignalModel
 from optimizer import (
     optimize_portfolio,
@@ -80,6 +86,17 @@ lstm_models: dict[str, LSTMSignalModel] = {}
 
 MODEL_DIR = "models/"
 BACKEND_URL = "http://localhost:8080/api/v1"
+
+ML_MODEL_DIR = os.environ.get("ML_MODEL_DIR", MODEL_DIR)
+_registry = ModelRegistry(base_dir=ML_MODEL_DIR)
+_meta_models: dict[str, MetaLabeler] = {}
+_flow_models: dict[str, OrderFlowModel] = {}
+
+META_FEATURE_COLS = [
+    "rsi", "macd_hist", "bb_pctb", "sma_cross", "atr_pct", "rel_volume",
+    "volatility_20d", "funding_rate", "funding_rate_delta",
+    "oi_delta_1", "direction",
+]
 
 
 @app.on_event("startup")
@@ -511,6 +528,112 @@ async def compute_ic(symbol: str, days: int = IC_DEFAULT_WINDOW):
         "is_significant": p_value < 0.05,
         "ic_quality": "Strong" if abs(ic) > 0.05 else "Weak" if abs(ic) > 0.02 else "Noise",
     }
+
+
+# ── New ML Endpoints (Meta-Labeler & Order Flow) ────────────
+
+class PredictMetaRequest(BaseModel):
+    primary_signal: str  # "LONG" | "SHORT"
+    entry_price: float
+    tp_pct: float = 0.02
+    sl_pct: float = 0.01
+
+
+class PredictFlowRequest(BaseModel):
+    lookback_bars: int = 200
+
+
+@app.post("/train-meta/{symbol}")
+async def train_meta(symbol: str, days: int = 500):
+    """Train the triple-barrier meta-labeler on historical bars for {symbol}."""
+    df = await fetch_market_data(symbol, days)
+    enriched = enrich_with_derivatives(df, funding=None, oi=None)
+    featured = compute_features(enriched)
+    for c in ENRICHED_COLS:
+        if c not in featured.columns:
+            featured[c] = 0.0
+    featured = featured.dropna(subset=FEATURE_COLS).reset_index(drop=True)
+
+    signals = replay_momentum_primary(featured, fast=10, slow=50)
+    labels = apply_triple_barrier(
+        featured[["time", "high", "low", "close"]], signals,
+        tp_pct=0.02, sl_pct=0.01, max_bars=24,
+    )
+    if len(labels) == 0:
+        raise HTTPException(status_code=400, detail="No labels produced (not enough forward horizon)")
+
+    merged = labels.merge(
+        featured, left_on="signal_time", right_on="time", how="inner",
+    )
+    merged["direction"] = labels["direction"].values
+
+    model = MetaLabeler(feature_cols=META_FEATURE_COLS)
+    result = model.train(merged[META_FEATURE_COLS + ["label"]], label_col="label")
+    _meta_models[symbol] = model
+    path = _registry.save(symbol, "meta", model, metadata={"symbol": symbol, **result})
+    result["saved_to"] = str(path)
+    return result
+
+
+@app.post("/predict-meta/{symbol}")
+async def predict_meta(symbol: str, req: PredictMetaRequest):
+    """Score a single primary signal. Loads from registry if not in memory."""
+    if symbol not in _meta_models:
+        try:
+            model, _ = _registry.load(symbol, "meta")
+            _meta_models[symbol] = model
+        except FileNotFoundError:
+            raise HTTPException(status_code=400, detail=f"No meta model for {symbol}")
+
+    df = await fetch_market_data(symbol, 100)
+    enriched = enrich_with_derivatives(df, funding=None, oi=None)
+    featured = compute_features(enriched)
+    for c in ENRICHED_COLS:
+        if c not in featured.columns:
+            featured[c] = 0.0
+    featured = featured.dropna(subset=FEATURE_COLS)
+    if featured.empty:
+        raise HTTPException(status_code=400, detail="Not enough bars to compute features")
+
+    direction = 1 if req.primary_signal == "LONG" else -1
+    last = featured.iloc[[-1]].copy()
+    last["direction"] = direction
+    out = _meta_models[symbol].predict(last[META_FEATURE_COLS])
+    return {
+        "symbol": symbol,
+        "meta_prob": out["meta_prob"],
+        "direction": out["direction"],
+        "primary_signal": req.primary_signal,
+    }
+
+
+@app.post("/train-flow/{symbol}")
+async def train_flow(symbol: str, days: int = 500):
+    df = await fetch_market_data(symbol, days)
+    enriched = enrich_with_derivatives(df, funding=None, oi=None)
+
+    model = OrderFlowModel()
+    result = model.train(enriched, forward_bars=4)
+    _flow_models[symbol] = model
+    path = _registry.save(symbol, "flow", model, metadata={"symbol": symbol, **result})
+    result["saved_to"] = str(path)
+    return result
+
+
+@app.post("/predict-flow/{symbol}")
+async def predict_flow(symbol: str, req: PredictFlowRequest):
+    if symbol not in _flow_models:
+        try:
+            model, _ = _registry.load(symbol, "flow")
+            _flow_models[symbol] = model
+        except FileNotFoundError:
+            raise HTTPException(status_code=400, detail=f"No flow model for {symbol}")
+
+    df = await fetch_market_data(symbol, req.lookback_bars + 50)
+    enriched = enrich_with_derivatives(df, funding=None, oi=None)
+    feat = compute_flow_features(enriched).tail(1)
+    out = _flow_models[symbol].predict(feat)
+    return {"symbol": symbol, **out}
 
 
 if __name__ == "__main__":
