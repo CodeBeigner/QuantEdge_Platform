@@ -8,15 +8,37 @@ Layout:
 Why a separate metadata file: joblib blobs are opaque. A sidecar JSON lets us
 inspect training timestamp, out-of-sample metrics, and feature schema without
 re-loading the model.
+
+Concurrency: not thread-safe. Designed for single-process ml-service with
+sequential retraining jobs.
 """
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
 import joblib
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write text to `path` via temp-file + rename so readers never see a
+    truncated file. `os.replace` is atomic on POSIX within the same filesystem."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 class ModelRegistry:
@@ -47,8 +69,11 @@ class ModelRegistry:
         pointer = d / "latest.json"
 
         joblib.dump(obj, blob_path)
-        meta_path.write_text(json.dumps({"version": version, **metadata}, default=str))
-        pointer.write_text(json.dumps({"version": version}))
+        _atomic_write_text(
+            meta_path,
+            json.dumps({"version": version, **metadata}, default=str),
+        )
+        _atomic_write_text(pointer, json.dumps({"version": version}))
         return blob_path
 
     def load(self, symbol: str, model_type: str) -> Tuple[Any, Dict[str, Any]]:
