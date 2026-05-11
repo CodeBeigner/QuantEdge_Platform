@@ -2,6 +2,8 @@ package com.QuantPlatformApplication.QuantPlatformApplication.engine;
 
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.*;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.strategy.MultiTimeFrameStrategy;
+import com.QuantPlatformApplication.QuantPlatformApplication.engine.trading.FeeModel;
+import com.QuantPlatformApplication.QuantPlatformApplication.engine.trading.SlippageModel;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.pipeline.CandleAggregator;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.pipeline.IndicatorCalculator;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.risk.TradeRiskEngine;
@@ -83,20 +85,20 @@ public class MultiTimeFrameBacktestEngine {
                 Double exitPrice = checkPositionExit(pos, currentCandle);
                 if (exitPrice != null) {
                     // Apply slippage on exit
-                    double slippageAmount = exitPrice * config.getSlippageBps() / 10000.0;
                     double slippedExit = pos.isLong
-                        ? exitPrice - slippageAmount  // slippage hurts on exit for longs
-                        : exitPrice + slippageAmount; // slippage hurts on exit for shorts
-                    totalSlippage += Math.abs(slippageAmount * pos.positionSize);
+                        ? SlippageModel.applyToSell(exitPrice, config.getSlippageBps())
+                        : SlippageModel.applyToBuy(exitPrice, config.getSlippageBps());
+                    double slippageAmount = Math.abs(slippedExit - exitPrice);
+                    totalSlippage += slippageAmount * pos.positionSize;
 
                     // Calculate P&L
                     double directionMultiplier = pos.isLong ? 1.0 : -1.0;
                     double rawPnl = (slippedExit - pos.entryPrice) * pos.positionSize * directionMultiplier;
 
                     // Apply exit fee
-                    double feePct = config.isUseMakerOrders() ? config.getMakerFeePct() : config.getTakerFeePct();
                     double exitNotional = slippedExit * pos.positionSize;
-                    double exitFee = exitNotional * feePct;
+                    double exitFee = FeeModel.exitFee(exitNotional, config.getMakerFeePct(),
+                            config.getTakerFeePct(), config.isUseMakerOrders());
                     totalFees += exitFee;
 
                     double netPnl = rawPnl - exitFee;
@@ -247,16 +249,16 @@ public class MultiTimeFrameBacktestEngine {
                     // Open position with slippage on entry
                     double entryPrice = signal.getEntryPrice();
                     boolean isLong = signal.getAction() == Action.BUY;
-                    double slippageAmount = entryPrice * config.getSlippageBps() / 10000.0;
                     double slippedEntry = isLong
-                        ? entryPrice + slippageAmount  // slippage hurts on entry for longs
-                        : entryPrice - slippageAmount; // slippage hurts on entry for shorts
-                    totalSlippage += Math.abs(slippageAmount * riskResult.getPositionSize());
+                        ? SlippageModel.applyToBuy(entryPrice, config.getSlippageBps())
+                        : SlippageModel.applyToSell(entryPrice, config.getSlippageBps());
+                    double slippageAmount = Math.abs(slippedEntry - entryPrice);
+                    totalSlippage += slippageAmount * riskResult.getPositionSize();
 
                     // Apply entry fee
-                    double feePct = config.isUseMakerOrders() ? config.getMakerFeePct() : config.getTakerFeePct();
                     double entryNotional = slippedEntry * riskResult.getPositionSize();
-                    double entryFee = entryNotional * feePct;
+                    double entryFee = FeeModel.entryFee(entryNotional, config.getMakerFeePct(),
+                            config.getTakerFeePct(), config.isUseMakerOrders());
                     totalFees += entryFee;
                     balance -= entryFee;
 
