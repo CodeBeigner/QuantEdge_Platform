@@ -1,7 +1,7 @@
 import type {
   User, MarketPrice, Strategy, ExecutionResult, BacktestResult,
   TradingAgent, Order, Position, Portfolio, RiskMetrics, Alert,
-  FirmProfile, MLPrediction, PipelineResult, ChatMessage,
+  FirmProfile, MetaPrediction, MetaTrainResult, FlowPrediction, FlowTrainResult, PipelineResult, ChatMessage,
   RiskConfig, SystemHealth, SystemVersion, DeltaConnectionStatus, TradeLog, MultiTFBacktestResult,
 } from '@/types';
 
@@ -209,15 +209,30 @@ export const api = {
   getUnacknowledgedAlerts: () => get<Alert[]>('/alerts/unacknowledged'),
   acknowledgeAlert: (id: number) => post<Alert>(`/alerts/${id}/acknowledge`),
 
-  // ML
-  mlPredict: (symbol: string) => post<MLPrediction>(`/ml/predict/${symbol}`),
-  mlTrain: (symbol: string) => post<Record<string, unknown>>(`/ml/train/${symbol}`),
+  // ML — triple-barrier meta-labeler + order-flow model
+  mlTrainMeta: (symbol: string) =>
+    post<MetaTrainResult>(`/ml/train-meta/${symbol}`, {}),
+  mlPredictMeta: (
+    symbol: string,
+    primary: 'LONG' | 'SHORT' = 'LONG',
+    entryPrice = 0,
+    tpPct = 0.02,
+    slPct = 0.01,
+  ) =>
+    post<MetaPrediction>(`/ml/predict-meta/${symbol}`, {
+      primarySignal: primary,
+      entryPrice,
+      tpPct,
+      slPct,
+    }),
+  mlTrainFlow: (symbol: string) =>
+    post<FlowTrainResult>(`/ml/train-flow/${symbol}`, {}),
+  mlPredictFlow: (symbol: string, lookbackBars = 200) =>
+    post<FlowPrediction>(`/ml/predict-flow/${symbol}`, { lookbackBars }),
   mlFeatures: (symbol: string) => get<Record<string, number>[]>(`/ml/features/${symbol}`),
   mlOptimize: (symbols: string[]) => post<Record<string, unknown>>('/ml/optimize', { symbols }),
   mlSignals: () => get<Record<string, unknown>>('/ml/signals'),
   mlHealth: () => get<Record<string, unknown>>('/ml/health'),
-  mlPredictEnsemble: (symbol: string) => post<MLPrediction>(`/ml/predict-ensemble/${symbol}`),
-  mlTrainLstm: (symbol: string) => post<Record<string, unknown>>(`/ml/train-lstm/${symbol}`),
 
   // Firm
   setupFirm: (firmName: string, firmType: string, initialCapital: number, riskAppetite: string) =>
