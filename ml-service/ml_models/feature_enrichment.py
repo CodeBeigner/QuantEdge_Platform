@@ -11,16 +11,33 @@ from typing import Optional
 import pandas as pd
 
 
+def _as_utc(df: pd.DataFrame, col: str = "time") -> pd.DataFrame:
+    """Return a copy with df[col] coerced to tz-aware UTC.
+
+    merge_asof rejects mixed tz-aware/tz-naive keys with a cryptic MergeError.
+    We localize naive inputs to UTC and convert aware inputs to UTC so callers
+    can pass either without knowing the quirk.
+    """
+    df = df.copy()
+    s = df[col]
+    if pd.api.types.is_datetime64_any_dtype(s):
+        if s.dt.tz is None:
+            df[col] = s.dt.tz_localize("UTC")
+        else:
+            df[col] = s.dt.tz_convert("UTC")
+    return df
+
+
 def enrich_with_derivatives(
     bars: pd.DataFrame,
     funding: Optional[pd.DataFrame] = None,
     oi: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
-    out = bars.copy().sort_values("time").reset_index(drop=True)
+    out = _as_utc(bars).sort_values("time").reset_index(drop=True)
 
     # Funding rate — forward-fill the most recent funding event
     if funding is not None and not funding.empty:
-        f = funding.sort_values("time").reset_index(drop=True)
+        f = _as_utc(funding).sort_values("time").reset_index(drop=True)
         merged = pd.merge_asof(
             out[["time"]], f[["time", "funding_rate"]],
             on="time", direction="backward",
@@ -34,7 +51,7 @@ def enrich_with_derivatives(
 
     # Open interest — merge_asof, then compute deltas
     if oi is not None and not oi.empty:
-        o = oi.sort_values("time").reset_index(drop=True)
+        o = _as_utc(oi).sort_values("time").reset_index(drop=True)
         merged = pd.merge_asof(
             out[["time"]], o[["time", "open_interest"]],
             on="time", direction="backward",

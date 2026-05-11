@@ -60,6 +60,18 @@ def test_enrich_missing_optional_frames_is_graceful(bars):
     assert (out["oi_delta_1"] == 0.0).all()
 
 
+def test_enrich_accepts_tz_naive_inputs(bars, funding, oi):
+    """merge_asof crashes on mixed tz-aware/tz-naive keys; we coerce to UTC."""
+    naive_bars = bars.copy()
+    naive_bars["time"] = naive_bars["time"].dt.tz_localize(None)
+    naive_funding = funding.copy()
+    naive_funding["time"] = naive_funding["time"].dt.tz_localize(None)
+
+    out = enrich_with_derivatives(naive_bars, funding=naive_funding, oi=oi)
+    # Still produces the same forward-filled first value
+    assert out["funding_rate"].iloc[0] == pytest.approx(0.0001)
+
+
 def test_enrich_no_look_ahead(bars, funding, oi):
     """Enrichment at bar i must only use data with time <= bars.time[i]."""
     out_full = enrich_with_derivatives(bars, funding=funding, oi=oi)
