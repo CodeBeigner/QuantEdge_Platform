@@ -28,6 +28,7 @@ public class MultiTimeFrameBacktestEngine {
     private final CandleAggregator candleAggregator;
     private final IndicatorCalculator indicatorCalculator;
     private final TradeRiskEngine tradeRiskEngine;
+    private final com.QuantPlatformApplication.QuantPlatformApplication.client.MLMetaClient mlMetaClient;
 
     // Minimum 15m candles needed before evaluation starts:
     // 4h candle = 16 x 15m, indicator min = 50 candles of 4h => need 50*16=800
@@ -254,6 +255,34 @@ public class MultiTimeFrameBacktestEngine {
                         : SlippageModel.applyToSell(entryPrice, config.getSlippageBps());
                     double slippageAmount = Math.abs(slippedEntry - entryPrice);
                     totalSlippage += slippageAmount * riskResult.getPositionSize();
+
+                    // Plan 3: optional meta-labeler veto.
+                    if (config.isUseMetaFilter()) {
+                        String sym = config.getMetaSymbol();
+                        if (sym == null || sym.isEmpty()) {
+                            throw new IllegalStateException(
+                                "useMetaFilter=true requires config.metaSymbol to be set");
+                        }
+                        try {
+                            var resp = mlMetaClient.predictMeta(
+                                    sym,
+                                    isLong ? "LONG" : "SHORT",
+                                    slippedEntry,
+                                    0.02,
+                                    0.01
+                            );
+                            if (resp.metaProb() < config.getMetaThreshold()) {
+                                log.info("Meta veto: {} {} prob {} < threshold {}",
+                                        sym, isLong ? "LONG" : "SHORT",
+                                        resp.metaProb(), config.getMetaThreshold());
+                                continue; // skip to next strategy
+                            }
+                        } catch (IllegalStateException ise) {
+                            throw ise; // misconfigured — fail loud
+                        } catch (Exception e) {
+                            log.warn("Meta filter unreachable, proceeding without veto: {}", e.getMessage());
+                        }
+                    }
 
                     // Apply entry fee
                     double entryNotional = slippedEntry * riskResult.getPositionSize();

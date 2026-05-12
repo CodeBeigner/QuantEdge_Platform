@@ -1,5 +1,6 @@
 package com.QuantPlatformApplication.QuantPlatformApplication.engine;
 
+import com.QuantPlatformApplication.QuantPlatformApplication.client.MLMetaClient;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.*;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.strategy.MultiTimeFrameStrategy;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.pipeline.CandleAggregator;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 class MultiTimeFrameBacktestEngineTest {
 
@@ -28,7 +30,8 @@ class MultiTimeFrameBacktestEngineTest {
         aggregator = new CandleAggregator();
         indicatorCalc = new IndicatorCalculator();
         riskEngine = new TradeRiskEngine();
-        engine = new MultiTimeFrameBacktestEngine(aggregator, indicatorCalc, riskEngine);
+        MLMetaClient mlMetaClient = mock(MLMetaClient.class);
+        engine = new MultiTimeFrameBacktestEngine(aggregator, indicatorCalc, riskEngine, mlMetaClient);
     }
 
     private List<Candle> generate15mCandles(int count, double startPrice) {
