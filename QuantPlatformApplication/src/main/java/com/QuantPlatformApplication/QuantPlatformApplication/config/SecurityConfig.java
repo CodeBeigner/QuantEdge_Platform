@@ -79,6 +79,7 @@ public class SecurityConfig {
                                 "/api/v1/risk-config/**", // Risk config (public for dev)
                                 "/api/v1/system/**", // System health (public)
                                 "/api/v1/paper/**", // Paper trading metrics + history (public for dev)
+                                "/api/v1/trade-logs/**", // Trade log history (public for dev)
                                 "/ws/**", // websocket
                                 "/actuator/**", // health checks + metrics
                                 "/error" // Spring error dispatch

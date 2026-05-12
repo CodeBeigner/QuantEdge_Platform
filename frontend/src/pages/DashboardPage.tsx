@@ -504,7 +504,7 @@ export default function DashboardPage() {
             icon={<Play size={28} />}
             title="Start Paper Trading"
             description="Practice with virtual money and validate your edge in live markets."
-            onClick={() => navigate('/strategies')}
+            onClick={() => navigate('/paper-trading')}
           />
         </div>
       ) : (
