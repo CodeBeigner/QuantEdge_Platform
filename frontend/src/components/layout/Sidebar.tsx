@@ -7,6 +7,7 @@ const navItems = [
   { label: 'Trade', icon: 'candlestick_chart', path: '/trade' },
   { label: 'Strategies', icon: 'psychology', path: '/strategies' },
   { label: 'Backtest', icon: 'science', path: '/backtest' },
+  { label: 'Paper Trading', icon: 'candlestick_chart', path: '/paper-trading' },
   { label: 'Trade Log', icon: 'menu_book', path: '/trade-log' },
   { label: 'Risk', icon: 'shield', path: '/risk' },
   { label: 'Settings', icon: 'settings', path: '/settings' },

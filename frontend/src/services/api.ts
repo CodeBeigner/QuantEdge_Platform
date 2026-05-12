@@ -4,6 +4,7 @@ import type {
   FirmProfile, MetaPrediction, MetaTrainResult, FlowPrediction, FlowTrainResult, PipelineResult, ChatMessage,
   RiskConfig, SystemHealth, SystemVersion, DeltaConnectionStatus, TradeLog, MultiTFBacktestResult,
 } from '@/types';
+import type { PaperMetricsResponse, PaperTrade } from '@/types/paperTrading';
 
 const API_BASE = '/api/v1';
 
@@ -338,4 +339,10 @@ export const api = {
       `${API_BASE}/backtests/multi-tf/candles?symbol=${symbol}&interval=${interval}&days=${days}`,
       { headers: headers() }
     ),
+
+  // Paper trading
+  getPaperMetrics: (windowDays = 28) =>
+    get<PaperMetricsResponse>(`/paper/metrics?windowDays=${windowDays}`),
+  getPaperTrades: (status?: 'OPEN' | 'CLOSED') =>
+    get<PaperTrade[]>(`/paper/trades${status ? `?status=${status}` : ''}`),
 };
