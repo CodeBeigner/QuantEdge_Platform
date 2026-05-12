@@ -43,10 +43,13 @@ public class MultiTimeFrameBacktestController {
         LocalDate startDate = request.containsKey("startDate")
             ? LocalDate.parse((String) request.get("startDate")) : endDate.minusMonths(3);
 
-        BacktestConfig config = BacktestConfig.builder()
+        BacktestConfig.BacktestConfigBuilder cfgBuilder = BacktestConfig.builder()
             .initialCapital(capital)
-            .slippageBps(slippage)
-            .build();
+            .slippageBps(slippage);
+        if (request.get("useMetaFilter") instanceof Boolean umf) cfgBuilder.useMetaFilter(umf);
+        if (request.get("metaThreshold") instanceof Number mt)   cfgBuilder.metaThreshold(mt.doubleValue());
+        if (request.get("metaSymbol") instanceof String ms)      cfgBuilder.metaSymbol(ms);
+        BacktestConfig config = cfgBuilder.build();
 
         List<Candle> candles;
         try {
