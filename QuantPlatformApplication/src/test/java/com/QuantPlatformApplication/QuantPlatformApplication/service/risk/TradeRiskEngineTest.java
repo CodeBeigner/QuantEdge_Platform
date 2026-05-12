@@ -1,21 +1,28 @@
 package com.QuantPlatformApplication.QuantPlatformApplication.service.risk;
 
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.*;
+import com.QuantPlatformApplication.QuantPlatformApplication.service.ml.MetaFilterGate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 class TradeRiskEngineTest {
 
     private TradeRiskEngine engine;
     private RiskParameters defaultParams;
+    private MetaFilterGate metaFilterGate;
 
     @BeforeEach
     void setUp() {
-        engine = new TradeRiskEngine();
+        metaFilterGate = mock(MetaFilterGate.class);
+        when(metaFilterGate.checkWithThreshold(anyString(), anyString(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+            .thenReturn(new MetaFilterGate.Decision(true, 0.99, "mocked", false));
+        engine = new TradeRiskEngine(metaFilterGate);
         defaultParams = RiskParameters.builder().build();
     }
 

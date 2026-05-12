@@ -1,6 +1,7 @@
 package com.QuantPlatformApplication.QuantPlatformApplication.service.risk;
 
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.*;
+import com.QuantPlatformApplication.QuantPlatformApplication.service.ml.MetaFilterGate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -10,7 +11,10 @@ import java.util.Set;
 
 @Slf4j
 @Component
+@lombok.RequiredArgsConstructor
 public class TradeRiskEngine {
+
+    private final MetaFilterGate metaFilterGate;
 
     public RiskCheckResult evaluate(TradeRequest request, double currentBalance, double peakEquity,
                                     double currentExposure, double dailyRealizedLoss,
@@ -107,6 +111,25 @@ public class TradeRiskEngine {
         if (feeImpact > params.getFeeImpactThreshold()) {
             rejections.add(String.format("Fees $%.2f are %.0f%% of risk $%.2f (max %.0f%%)",
                     estimatedFees, feeImpact * 100, riskAmount, params.getFeeImpactThreshold() * 100));
+        }
+
+        // CHECK 8: Meta-labeler filter (Plan 4)
+        // Skipped when rejections already exist — no point scoring a doomed signal.
+        // Fail-open policy inside MetaFilterGate: ml-service down => allow + Telegram alert.
+        if (rejections.isEmpty() && params.isUseMetaFilter()) {
+            String metaSymbol = params.getMetaSymbol() != null && !params.getMetaSymbol().isEmpty()
+                ? params.getMetaSymbol() : request.getSymbol();
+            MetaFilterGate.Decision metaDecision = metaFilterGate.checkWithThreshold(
+                metaSymbol,
+                request.getAction() == Action.BUY ? "LONG" : "SHORT",
+                request.getEntryPrice(),
+                0.02, // tp_pct matching meta training default
+                0.01, // sl_pct matching meta training default
+                params.getMetaThreshold()
+            );
+            if (!metaDecision.allow()) {
+                rejections.add("Meta-filter: " + metaDecision.reason());
+            }
         }
 
         if (!rejections.isEmpty()) {
