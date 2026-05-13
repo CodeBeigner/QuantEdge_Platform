@@ -34,7 +34,11 @@ venv/
 node_modules/
 dist/
 
-# ML models (generated at runtime)
+# ML models (generated at runtime — flat + nested per-symbol layout)
 ml-service/models/*.joblib
 ml-service/models/*.pt
+ml-service/models/**/*.joblib
+ml-service/models/**/*.pt
+ml-service/models/**/*.meta.json
+ml-service/models/**/latest.json
 .superpowers/
