@@ -1,7 +1,9 @@
 package com.QuantPlatformApplication.QuantPlatformApplication.engine;
 
+import com.QuantPlatformApplication.QuantPlatformApplication.client.MLMetaClient;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.*;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.strategy.MultiTimeFrameStrategy;
+import com.QuantPlatformApplication.QuantPlatformApplication.service.ml.MetaFilterGate;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.pipeline.CandleAggregator;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.pipeline.IndicatorCalculator;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.risk.TradeRiskEngine;
@@ -15,6 +17,9 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
 class MultiTimeFrameBacktestEngineTest {
 
@@ -27,8 +32,12 @@ class MultiTimeFrameBacktestEngineTest {
     void setUp() {
         aggregator = new CandleAggregator();
         indicatorCalc = new IndicatorCalculator();
-        riskEngine = new TradeRiskEngine();
-        engine = new MultiTimeFrameBacktestEngine(aggregator, indicatorCalc, riskEngine);
+        MetaFilterGate metaFilterGate = mock(MetaFilterGate.class);
+        when(metaFilterGate.checkWithThreshold(anyString(), anyString(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+            .thenReturn(new MetaFilterGate.Decision(true, 0.99, "mocked", false));
+        riskEngine = new TradeRiskEngine(metaFilterGate);
+        MLMetaClient mlMetaClient = mock(MLMetaClient.class);
+        engine = new MultiTimeFrameBacktestEngine(aggregator, indicatorCalc, riskEngine, mlMetaClient);
     }
 
     private List<Candle> generate15mCandles(int count, double startPrice) {

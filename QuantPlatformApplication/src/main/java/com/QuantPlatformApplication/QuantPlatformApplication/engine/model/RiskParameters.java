@@ -15,4 +15,7 @@ public class RiskParameters {
     @Builder.Default private final double minRiskRewardRatio = 1.5;
     @Builder.Default private final double feeImpactThreshold = 0.20;
     @Builder.Default private final double estimatedRoundTripFeePct = 0.001;
+    @Builder.Default private final boolean useMetaFilter = false;
+    @Builder.Default private final double metaThreshold = 0.55;
+    @Builder.Default private final String metaSymbol = "";
 }

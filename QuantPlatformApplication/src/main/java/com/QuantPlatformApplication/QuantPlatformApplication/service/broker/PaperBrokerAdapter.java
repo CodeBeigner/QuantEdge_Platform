@@ -68,12 +68,43 @@ public class PaperBrokerAdapter implements BrokerAdapter {
 
     @Override
     public Map<String, Object> getOrder(String orderId) {
-        return Map.of("orderId", orderId, "broker", "PAPER");
+        try {
+            var order = orderService.findById(Long.parseLong(orderId));
+            if (order == null) {
+                return Map.of("orderId", orderId, "status", "NOT_FOUND", "broker", "PAPER");
+            }
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("orderId", order.getId());
+            out.put("status", order.getStatus());
+            out.put("symbol", order.getSymbol());
+            out.put("side", order.getSide());
+            out.put("orderType", order.getOrderType());
+            out.put("quantity", order.getQuantity());
+            out.put("broker", "PAPER");
+            return out;
+        } catch (NumberFormatException e) {
+            return Map.of("orderId", orderId, "status", "INVALID_ID", "broker", "PAPER");
+        }
     }
 
     @Override
     public List<Map<String, Object>> getOpenOrders() {
-        return List.of();
+        try {
+            return orderService.getOpenOrders().stream()
+                    .map(o -> {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("orderId", o.getId());
+                        m.put("status", o.getStatus());
+                        m.put("symbol", o.getSymbol());
+                        m.put("side", o.getSide());
+                        m.put("quantity", o.getQuantity());
+                        m.put("broker", "PAPER");
+                        return m;
+                    })
+                    .toList();
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     @Override

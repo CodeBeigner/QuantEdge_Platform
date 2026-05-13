@@ -28,5 +28,5 @@ public class MarketDataResponse {
     private BigDecimal high;
     private BigDecimal low;
     private BigDecimal close;
-    private Long volume;
+    private BigDecimal volume;
 }

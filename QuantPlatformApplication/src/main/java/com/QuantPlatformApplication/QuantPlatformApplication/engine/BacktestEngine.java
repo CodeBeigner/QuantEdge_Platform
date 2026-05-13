@@ -2,6 +2,8 @@ package com.QuantPlatformApplication.QuantPlatformApplication.engine;
 
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.*;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.strategy.TradingStrategy;
+import com.QuantPlatformApplication.QuantPlatformApplication.engine.trading.FeeModel;
+import com.QuantPlatformApplication.QuantPlatformApplication.engine.trading.SlippageModel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -17,12 +19,15 @@ import java.util.List;
  *
  * BUG 3 FIX: Applies slippage (3bps default) to all BUY/SELL fills
  * and tracks cumulative transaction costs as a metric.
+ *
+ * NOTE: This engine operates on daily close prices and does NOT model
+ * 8-hour funding payments. For realistic perpetuals P&L (funding +
+ * intraday slippage), use MultiTimeFrameBacktestEngine. This engine is
+ * retained for quick strategy screening and agent-pipeline use where
+ * speed matters more than per-8h funding accuracy.
  */
 @Slf4j
 public class BacktestEngine {
-
-    /** Default slippage in basis points applied to every fill */
-    private static final double DEFAULT_SLIPPAGE_BPS = 3.0 / 10000.0;
 
     /** Minimum lookback to divide prices */
     private static final int MIN_LOOKBACK_DIVISOR = 2;
@@ -81,24 +86,38 @@ public class BacktestEngine {
 
                 switch (decision.action()) {
                     case BUY -> {
-                        // BUG 3 FIX: Apply slippage to buy fill price
-                        double fillPrice = currentPrice * (1 + DEFAULT_SLIPPAGE_BPS);
+                        // Apply slippage to buy fill price
+                        double fillPrice = SlippageModel.applyToBuy(currentPrice, config.getSlippageBps());
                         int qty = Math.min(decision.quantity(), (int) (cash / fillPrice));
                         if (qty > 0) {
                             double slippageCost = qty * (fillPrice - currentPrice);
                             transactionCosts += slippageCost;
+
+                            // Deduct entry fee
+                            double entryFee = FeeModel.entryFee(qty * fillPrice,
+                                    config.getMakerFeePct(), config.getTakerFeePct(), config.isUseMakerOrders());
+                            cash -= entryFee;
+                            transactionCosts += entryFee;
+
                             position += qty;
                             cash -= qty * fillPrice;
                             totalTrades++;
                         }
                     }
                     case SELL -> {
-                        // BUG 3 FIX: Apply slippage to sell fill price
-                        double fillPrice = currentPrice * (1 - DEFAULT_SLIPPAGE_BPS);
+                        // Apply slippage to sell fill price
+                        double fillPrice = SlippageModel.applyToSell(currentPrice, config.getSlippageBps());
                         int qty = Math.min(decision.quantity(), position);
                         if (qty > 0) {
                             double slippageCost = qty * (currentPrice - fillPrice);
                             transactionCosts += slippageCost;
+
+                            // Deduct exit fee
+                            double exitFee = FeeModel.exitFee(qty * fillPrice,
+                                    config.getMakerFeePct(), config.getTakerFeePct(), config.isUseMakerOrders());
+                            cash -= exitFee;
+                            transactionCosts += exitFee;
+
                             double costBasis = config.getCurrentCash() / (position > 0 ? position : 1);
                             if (fillPrice > costBasis)
                                 winningTrades++;

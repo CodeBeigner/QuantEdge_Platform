@@ -20,6 +20,7 @@ import { FirmSetupPage } from '@/pages/FirmSetupPage';
 import DashboardPage from '@/pages/DashboardPage';
 import { StrategiesPage } from '@/pages/StrategiesPage';
 import { BacktestPage } from '@/pages/BacktestPage';
+import PaperTradingPage from '@/pages/PaperTradingPage';
 import RiskPage from '@/pages/RiskPage';
 import SettingsPage from '@/pages/SettingsPage';
 import TradePage from '@/pages/TradePage';
@@ -157,6 +158,7 @@ export default function App() {
           <Route path="/trade" element={<TradePage />} />
           <Route path="/strategies" element={<StrategiesPage />} />
           <Route path="/backtest" element={<BacktestPage />} />
+          <Route path="/paper-trading" element={<PaperTradingPage />} />
           <Route path="/trade-log" element={<TradeLogPage />} />
           <Route path="/risk" element={<RiskPage />} />
           <Route path="/settings" element={<SettingsPage />} />

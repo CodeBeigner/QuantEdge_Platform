@@ -70,8 +70,10 @@ public class OrderManagementService {
 
         BigDecimal marketPrice = recent.get(0).getClose();
 
-        // Simulate slippage (0.01% to 0.05%)
-        double slippageBps = 1 + (Math.random() * 4); // 1-5 basis points
+        // Deterministic per-order slippage so backtest replays are reproducible.
+        // Range 1-5 bps keyed on order id.
+        double slippageBps = com.QuantPlatformApplication.QuantPlatformApplication.engine.trading.SlippageModel
+                .deterministicForOrderId(String.valueOf(order.getId()), 1.0, 5.0);
         BigDecimal slippage = marketPrice.multiply(BigDecimal.valueOf(slippageBps / 10000));
 
         BigDecimal filledPrice = "BUY".equals(order.getSide())
@@ -110,6 +112,25 @@ public class OrderManagementService {
      */
     public List<Order> getAllOrders() {
         return orderRepo.findAllByOrderByCreatedAtDesc();
+    }
+
+    /**
+     * Find order by ID.
+     */
+    public Order findById(Long id) {
+        return orderRepo.findById(id).orElse(null);
+    }
+
+    /**
+     * Get open orders (SUBMITTED or PENDING status).
+     */
+    public List<Order> getOpenOrders() {
+        return orderRepo.findAll().stream()
+                .filter(o -> {
+                    String s = o.getStatus();
+                    return "SUBMITTED".equals(s) || "PENDING".equals(s);
+                })
+                .toList();
     }
 
     /**

@@ -30,6 +30,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
     { id: 'market', label: 'Go to Market', section: 'Navigate', icon: 'trending_up', shortcut: 'G M', onSelect: nav('/market') },
     { id: 'strategies', label: 'Go to Strategies', section: 'Navigate', icon: 'psychology', shortcut: 'G S', onSelect: nav('/strategies') },
     { id: 'backtest', label: 'Go to Backtest', section: 'Navigate', icon: 'science', onSelect: nav('/backtest') },
+    { id: 'paper-trading', label: 'Go to Paper Trading', section: 'Navigate', icon: 'candlestick_chart', onSelect: nav('/paper-trading') },
     { id: 'agents', label: 'Go to Agents', section: 'Navigate', icon: 'smart_toy', shortcut: 'G A', onSelect: nav('/agents') },
     { id: 'ai-intel', label: 'Go to AI Intel', section: 'Navigate', icon: 'auto_awesome', onSelect: nav('/ai-intel') },
     { id: 'orders', label: 'Go to Orders', section: 'Navigate', icon: 'receipt_long', shortcut: 'G O', onSelect: nav('/orders') },

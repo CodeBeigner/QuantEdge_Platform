@@ -118,4 +118,72 @@ public class MLClientService {
             return Map.of("status", "DOWN", "error", e.getMessage());
         }
     }
+
+    /**
+     * Score a primary signal via the meta-labeler.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> predictMeta(
+            String symbol, String primarySignal,
+            double entryPrice, double tpPct, double slPct) {
+        try {
+            Map<String, Object> body = Map.of(
+                    "primary_signal", primarySignal,
+                    "entry_price", entryPrice,
+                    "tp_pct", tpPct,
+                    "sl_pct", slPct);
+            ResponseEntity<Map> res = restTemplate.postForEntity(
+                    ML_SERVICE_URL + "/predict-meta/" + symbol, body, Map.class);
+            return res.getBody();
+        } catch (Exception e) {
+            log.warn("predict-meta failed for {}: {}", symbol, e.getMessage());
+            return Map.of("error", "ML service unavailable", "message", e.getMessage());
+        }
+    }
+
+    /**
+     * Train (or retrain) the meta-labeler for a symbol.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> trainMeta(String symbol) {
+        try {
+            ResponseEntity<Map> res = restTemplate.postForEntity(
+                    ML_SERVICE_URL + "/train-meta/" + symbol, null, Map.class);
+            return res.getBody();
+        } catch (Exception e) {
+            log.warn("train-meta failed for {}: {}", symbol, e.getMessage());
+            return Map.of("error", "ML service unavailable", "message", e.getMessage());
+        }
+    }
+
+    /**
+     * Score order-flow direction for a symbol.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> predictFlow(String symbol, int lookbackBars) {
+        try {
+            Map<String, Object> body = Map.of("lookback_bars", lookbackBars);
+            ResponseEntity<Map> res = restTemplate.postForEntity(
+                    ML_SERVICE_URL + "/predict-flow/" + symbol, body, Map.class);
+            return res.getBody();
+        } catch (Exception e) {
+            log.warn("predict-flow failed for {}: {}", symbol, e.getMessage());
+            return Map.of("error", "ML service unavailable", "message", e.getMessage());
+        }
+    }
+
+    /**
+     * Train (or retrain) the order-flow model for a symbol.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> trainFlow(String symbol) {
+        try {
+            ResponseEntity<Map> res = restTemplate.postForEntity(
+                    ML_SERVICE_URL + "/train-flow/" + symbol, null, Map.class);
+            return res.getBody();
+        } catch (Exception e) {
+            log.warn("train-flow failed for {}: {}", symbol, e.getMessage());
+            return Map.of("error", "ML service unavailable", "message", e.getMessage());
+        }
+    }
 }

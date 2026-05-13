@@ -148,14 +148,44 @@ export interface FirmProfile {
   createdAt: string;
 }
 
-export interface MLPrediction {
-  signal: string;
-  confidence: number;
-  direction_prob: { up: number; down: number };
-  features?: Record<string, number>;
-  model_accuracy?: number;
-  ensemble?: boolean;
-  model_used?: string;
+export interface MetaPrediction {
+  symbol: string;
+  meta_prob: number;
+  direction: -1 | 0 | 1;
+  primary_signal: 'LONG' | 'SHORT';
+  error?: string;
+  message?: string;
+}
+
+export interface MetaTrainResult {
+  symbol?: string;
+  n_train?: number;
+  n_dropped_timeout?: number;
+  train_accuracy?: number;
+  feature_cols?: string[];
+  saved_to?: string;
+  error?: string;
+  message?: string;
+}
+
+export interface FlowPrediction {
+  symbol: string;
+  flow_score: number;
+  direction: -1 | 0 | 1;
+  probs: { short: number; flat: number; long: number };
+  error?: string;
+  message?: string;
+}
+
+export interface FlowTrainResult {
+  symbol?: string;
+  n_train?: number;
+  train_accuracy?: number;
+  feature_cols?: string[];
+  forward_bars?: number;
+  saved_to?: string;
+  error?: string;
+  message?: string;
 }
 
 export interface PipelineResult {

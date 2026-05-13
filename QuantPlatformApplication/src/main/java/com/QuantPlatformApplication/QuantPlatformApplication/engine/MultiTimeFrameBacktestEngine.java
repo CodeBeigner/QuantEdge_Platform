@@ -2,6 +2,8 @@ package com.QuantPlatformApplication.QuantPlatformApplication.engine;
 
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.*;
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.strategy.MultiTimeFrameStrategy;
+import com.QuantPlatformApplication.QuantPlatformApplication.engine.trading.FeeModel;
+import com.QuantPlatformApplication.QuantPlatformApplication.engine.trading.SlippageModel;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.pipeline.CandleAggregator;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.pipeline.IndicatorCalculator;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.risk.TradeRiskEngine;
@@ -26,6 +28,7 @@ public class MultiTimeFrameBacktestEngine {
     private final CandleAggregator candleAggregator;
     private final IndicatorCalculator indicatorCalculator;
     private final TradeRiskEngine tradeRiskEngine;
+    private final com.QuantPlatformApplication.QuantPlatformApplication.client.MLMetaClient mlMetaClient;
 
     // Minimum 15m candles needed before evaluation starts:
     // 4h candle = 16 x 15m, indicator min = 50 candles of 4h => need 50*16=800
@@ -83,20 +86,20 @@ public class MultiTimeFrameBacktestEngine {
                 Double exitPrice = checkPositionExit(pos, currentCandle);
                 if (exitPrice != null) {
                     // Apply slippage on exit
-                    double slippageAmount = exitPrice * config.getSlippageBps() / 10000.0;
                     double slippedExit = pos.isLong
-                        ? exitPrice - slippageAmount  // slippage hurts on exit for longs
-                        : exitPrice + slippageAmount; // slippage hurts on exit for shorts
-                    totalSlippage += Math.abs(slippageAmount * pos.positionSize);
+                        ? SlippageModel.applyToSell(exitPrice, config.getSlippageBps())
+                        : SlippageModel.applyToBuy(exitPrice, config.getSlippageBps());
+                    double slippageAmount = Math.abs(slippedExit - exitPrice);
+                    totalSlippage += slippageAmount * pos.positionSize;
 
                     // Calculate P&L
                     double directionMultiplier = pos.isLong ? 1.0 : -1.0;
                     double rawPnl = (slippedExit - pos.entryPrice) * pos.positionSize * directionMultiplier;
 
                     // Apply exit fee
-                    double feePct = config.isUseMakerOrders() ? config.getMakerFeePct() : config.getTakerFeePct();
                     double exitNotional = slippedExit * pos.positionSize;
-                    double exitFee = exitNotional * feePct;
+                    double exitFee = FeeModel.exitFee(exitNotional, config.getMakerFeePct(),
+                            config.getTakerFeePct(), config.isUseMakerOrders());
                     totalFees += exitFee;
 
                     double netPnl = rawPnl - exitFee;
@@ -247,16 +250,44 @@ public class MultiTimeFrameBacktestEngine {
                     // Open position with slippage on entry
                     double entryPrice = signal.getEntryPrice();
                     boolean isLong = signal.getAction() == Action.BUY;
-                    double slippageAmount = entryPrice * config.getSlippageBps() / 10000.0;
                     double slippedEntry = isLong
-                        ? entryPrice + slippageAmount  // slippage hurts on entry for longs
-                        : entryPrice - slippageAmount; // slippage hurts on entry for shorts
-                    totalSlippage += Math.abs(slippageAmount * riskResult.getPositionSize());
+                        ? SlippageModel.applyToBuy(entryPrice, config.getSlippageBps())
+                        : SlippageModel.applyToSell(entryPrice, config.getSlippageBps());
+                    double slippageAmount = Math.abs(slippedEntry - entryPrice);
+                    totalSlippage += slippageAmount * riskResult.getPositionSize();
+
+                    // Plan 3: optional meta-labeler veto.
+                    if (config.isUseMetaFilter()) {
+                        String sym = config.getMetaSymbol();
+                        if (sym == null || sym.isEmpty()) {
+                            throw new IllegalStateException(
+                                "useMetaFilter=true requires config.metaSymbol to be set");
+                        }
+                        try {
+                            var resp = mlMetaClient.predictMeta(
+                                    sym,
+                                    isLong ? "LONG" : "SHORT",
+                                    slippedEntry,
+                                    0.02,
+                                    0.01
+                            );
+                            if (resp.metaProb() < config.getMetaThreshold()) {
+                                log.info("Meta veto: {} {} prob {} < threshold {}",
+                                        sym, isLong ? "LONG" : "SHORT",
+                                        resp.metaProb(), config.getMetaThreshold());
+                                continue; // skip to next strategy
+                            }
+                        } catch (IllegalStateException ise) {
+                            throw ise; // misconfigured — fail loud
+                        } catch (Exception e) {
+                            log.warn("Meta filter unreachable, proceeding without veto: {}", e.getMessage());
+                        }
+                    }
 
                     // Apply entry fee
-                    double feePct = config.isUseMakerOrders() ? config.getMakerFeePct() : config.getTakerFeePct();
                     double entryNotional = slippedEntry * riskResult.getPositionSize();
-                    double entryFee = entryNotional * feePct;
+                    double entryFee = FeeModel.entryFee(entryNotional, config.getMakerFeePct(),
+                            config.getTakerFeePct(), config.isUseMakerOrders());
                     totalFees += entryFee;
                     balance -= entryFee;
 

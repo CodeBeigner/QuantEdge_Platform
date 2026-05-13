@@ -29,12 +29,16 @@ import java.time.Instant;
 public class MarketDataEntity implements java.io.Serializable {
 
     @Id
-    @Column(nullable = false)
-    private Instant time;
-
-    @Id
     @Column(nullable = false, length = 20)
     private String symbol;
+
+    @Id
+    @Column(nullable = false, length = 8)
+    private String timeframe;
+
+    @Id
+    @Column(nullable = false)
+    private Instant time;
 
     @Column(precision = 15, scale = 4)
     private BigDecimal open;
@@ -48,5 +52,6 @@ public class MarketDataEntity implements java.io.Serializable {
     @Column(name = "close", precision = 15, scale = 4)
     private BigDecimal close;
 
-    private Long volume;
+    @Column(precision = 20, scale = 8)
+    private BigDecimal volume;
 }

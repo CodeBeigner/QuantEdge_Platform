@@ -219,7 +219,7 @@ export function OrdersPage() {
   // Fetch initial order book via REST
   useEffect(() => {
     if (!selectedProduct) return
-    deltaApi.getOrderBook(selectedProduct.id, 20).then(setOrderBook).catch(() => {})
+    deltaApi.getOrderBook(selectedProduct.symbol, 20).then(setOrderBook).catch(() => {})
   }, [selectedProduct])
 
   // Place order mutation

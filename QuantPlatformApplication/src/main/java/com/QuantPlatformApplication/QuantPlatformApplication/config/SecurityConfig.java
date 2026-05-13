@@ -54,6 +54,10 @@ public class SecurityConfig {
 
                 // Authorization rules
                 .authorizeHttpRequests(auth -> auth
+                        // Admin endpoints — always require authentication
+                        // (declared before permitAll list so it can't be widened by accident)
+                        .requestMatchers("/api/v1/admin/**").authenticated()
+
                         // Public endpoints — no token required
                         .requestMatchers(
                                 "/api/v1/auth/**", // register + login
@@ -74,6 +78,8 @@ public class SecurityConfig {
                                 "/api/v1/delta/**", // Delta Exchange (public for dev)
                                 "/api/v1/risk-config/**", // Risk config (public for dev)
                                 "/api/v1/system/**", // System health (public)
+                                "/api/v1/paper/**", // Paper trading metrics + history (public for dev)
+                                "/api/v1/trade-logs/**", // Trade log history (public for dev)
                                 "/ws/**", // websocket
                                 "/actuator/**", // health checks + metrics
                                 "/error" // Spring error dispatch

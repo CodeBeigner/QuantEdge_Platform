@@ -31,6 +31,7 @@ public class MarketDataService {
 
     /**
      * Fetch OHLCV data for a symbol within a specific date range.
+     * Defaults to 15m timeframe.
      *
      * @param symbol Stock ticker (e.g., "SPY")
      * @param start  Start of date range (inclusive)
@@ -38,19 +39,36 @@ public class MarketDataService {
      * @return List of price bars ordered chronologically
      */
     public List<MarketDataEntity> fetchDailyData(String symbol, Instant start, Instant end) {
+        return fetchDailyData(symbol, "15m", start, end);
+    }
+
+    /**
+     * Fetch OHLCV data for a symbol + timeframe within a specific date range.
+     *
+     * @param symbol    Stock ticker (e.g., "SPY")
+     * @param timeframe Timeframe (e.g., "15m", "1h", "4h")
+     * @param start     Start of date range (inclusive)
+     * @param end       End of date range (inclusive)
+     * @return List of price bars ordered chronologically
+     */
+    public List<MarketDataEntity> fetchDailyData(String symbol, String timeframe, Instant start, Instant end) {
         if (symbol == null || symbol.isBlank()) {
             throw new IllegalArgumentException("Symbol must not be blank");
+        }
+        if (timeframe == null || timeframe.isBlank()) {
+            throw new IllegalArgumentException("Timeframe must not be blank");
         }
         if (start.isAfter(end)) {
             throw new IllegalArgumentException("Start date must be before end date");
         }
 
-        return marketDataRepository.findBySymbolAndTimeBetweenOrderByTimeAsc(
-                symbol.toUpperCase(), start, end);
+        return marketDataRepository.findBySymbolAndTimeframeAndTimeBetweenOrderByTimeAsc(
+                symbol.toUpperCase(), timeframe, start, end);
     }
 
     /**
      * Fetch the most recent N trading days of data for a symbol.
+     * Defaults to 15m timeframe.
      * The results are returned in ascending chronological order (oldest first).
      *
      * @param symbol Stock ticker (e.g., "SPY")
@@ -58,8 +76,24 @@ public class MarketDataService {
      * @return List of price bars ordered chronologically (oldest → newest)
      */
     public List<MarketDataEntity> fetchRecentData(String symbol, int days) {
+        return fetchRecentData(symbol, "15m", days);
+    }
+
+    /**
+     * Fetch the most recent N trading days of data for a symbol + timeframe.
+     * The results are returned in ascending chronological order (oldest first).
+     *
+     * @param symbol    Stock ticker (e.g., "SPY")
+     * @param timeframe Timeframe (e.g., "15m", "1h", "4h")
+     * @param days      Number of recent trading days to fetch
+     * @return List of price bars ordered chronologically (oldest → newest)
+     */
+    public List<MarketDataEntity> fetchRecentData(String symbol, String timeframe, int days) {
         if (symbol == null || symbol.isBlank()) {
             throw new IllegalArgumentException("Symbol must not be blank");
+        }
+        if (timeframe == null || timeframe.isBlank()) {
+            throw new IllegalArgumentException("Timeframe must not be blank");
         }
         if (days <= 0 || days > 5000) {
             throw new IllegalArgumentException("Days must be between 1 and 5000");
@@ -68,8 +102,8 @@ public class MarketDataService {
         // The native query returns data in DESC order (most recent first)
         // We reverse it to provide chronological order (oldest first) — more natural
         // for charts
-        List<MarketDataEntity> results = marketDataRepository.findRecentBySymbol(
-                symbol.toUpperCase(), days);
+        List<MarketDataEntity> results = marketDataRepository.findRecentBySymbolAndTimeframe(
+                symbol.toUpperCase(), timeframe, days);
 
         // Reverse to chronological order
         List<MarketDataEntity> chronological = new java.util.ArrayList<>(results);
@@ -87,10 +121,18 @@ public class MarketDataService {
     }
 
     /**
-     * Get the total count of records for a given symbol.
+     * Get the total count of records for a given symbol (defaults to 15m).
      * Useful for diagnostics and the frontend summary.
      */
     public long getRecordCount(String symbol) {
-        return marketDataRepository.countBySymbol(symbol.toUpperCase());
+        return getRecordCount(symbol, "15m");
+    }
+
+    /**
+     * Get the total count of records for a given symbol + timeframe.
+     * Useful for diagnostics and the frontend summary.
+     */
+    public long getRecordCount(String symbol, String timeframe) {
+        return marketDataRepository.countBySymbolAndTimeframe(symbol.toUpperCase(), timeframe);
     }
 }

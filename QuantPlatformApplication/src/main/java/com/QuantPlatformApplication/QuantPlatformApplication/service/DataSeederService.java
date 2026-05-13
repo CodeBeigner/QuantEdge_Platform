@@ -89,11 +89,12 @@ public class DataSeederService implements CommandLineRunner {
             MarketDataEntity entity = new MarketDataEntity();
             entity.setTime(time);
             entity.setSymbol(symbol);
+            entity.setTimeframe("15m");  // Default timeframe for seeded data
             entity.setOpen(BigDecimal.valueOf(round(open)));
             entity.setHigh(BigDecimal.valueOf(round(high)));
             entity.setLow(BigDecimal.valueOf(round(low)));
             entity.setClose(BigDecimal.valueOf(round(close)));
-            entity.setVolume(volume);
+            entity.setVolume(BigDecimal.valueOf(volume));
 
             batch.add(entity);
             price = close;
