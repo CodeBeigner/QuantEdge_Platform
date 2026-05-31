@@ -1,0 +1,18 @@
+# Test profile — provides defaults for all required environment variables
+# Activated automatically during testing (spring.profiles.active=test)
+spring:
+  datasource:
+    password: test_db_pass
+  jpa:
+    show-sql: false
+
+jwt:
+  secret: dGVzdC1zZWNyZXQtZm9yLXVuaXQtdGVzdHMtb25seS1ub3QtZm9yLXByb2R1Y3Rpb24=
+
+encryption:
+  key: test-encryption-key-32-chars-xx
+
+management:
+  endpoint:
+    health:
+      show-details: always

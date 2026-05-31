@@ -6,14 +6,19 @@ import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.DeltaC
 import com.QuantPlatformApplication.QuantPlatformApplication.repository.DeltaCredentialRepository;
 import com.QuantPlatformApplication.QuantPlatformApplication.service.delta.DeltaExchangeClient;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/delta")
 @RequiredArgsConstructor
@@ -46,18 +51,55 @@ public class DeltaExchangeController {
     }
 
     @GetMapping("/products")
-    public Mono<JsonNode> getProducts(@RequestParam(defaultValue = "true") boolean testnet) {
-        return client.getProducts(testnet);
+    public Mono<ResponseEntity<JsonNode>> getProducts(@RequestParam(defaultValue = "true") boolean testnet) {
+        return client.getProducts(testnet)
+            .map(ResponseEntity::ok)
+            .onErrorResume(e -> {
+                log.warn("Delta products fetch failed", e);
+                return Mono.just(ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(errorBody("Delta Exchange unreachable: " + e.getMessage())));
+            })
+            .timeout(Duration.ofSeconds(15), Mono.just(ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
+                .body(errorBody("Delta Exchange request timed out"))));
     }
 
     @GetMapping("/ticker/{symbol}")
-    public Mono<JsonNode> getTicker(@PathVariable String symbol, @RequestParam(defaultValue = "true") boolean testnet) {
-        return client.getTicker(symbol, testnet);
+    public Mono<ResponseEntity<JsonNode>> getTicker(@PathVariable String symbol, @RequestParam(defaultValue = "true") boolean testnet) {
+        return client.getTicker(symbol, testnet)
+            .map(ResponseEntity::ok)
+            .onErrorResume(e -> {
+                log.warn("Delta ticker fetch failed for {}", symbol, e);
+                return Mono.just(ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(errorBody("Delta Exchange unreachable: " + e.getMessage())));
+            })
+            .timeout(Duration.ofSeconds(15), Mono.just(ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
+                .body(errorBody("Delta Exchange request timed out"))));
+    }
+
+    @GetMapping("/tickers")
+    public Mono<ResponseEntity<JsonNode>> getTickers(@RequestParam(defaultValue = "true") boolean testnet) {
+        return client.getTickers(testnet)
+            .map(ResponseEntity::ok)
+            .onErrorResume(e -> {
+                log.warn("Delta tickers fetch failed", e);
+                return Mono.just(ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(errorBody("Delta Exchange unreachable: " + e.getMessage())));
+            })
+            .timeout(Duration.ofSeconds(15), Mono.just(ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
+                .body(errorBody("Delta Exchange request timed out"))));
     }
 
     @GetMapping("/orderbook/{productId}")
-    public Mono<JsonNode> getOrderBook(@PathVariable int productId, @RequestParam(defaultValue = "20") int depth, @RequestParam(defaultValue = "true") boolean testnet) {
-        return client.getOrderBook(productId, depth, testnet);
+    public Mono<ResponseEntity<JsonNode>> getOrderBook(@PathVariable int productId, @RequestParam(defaultValue = "20") int depth, @RequestParam(defaultValue = "true") boolean testnet) {
+        return client.getOrderBook(productId, depth, testnet)
+            .map(ResponseEntity::ok)
+            .onErrorResume(e -> {
+                log.warn("Delta orderbook fetch failed for {}", productId, e);
+                return Mono.just(ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(errorBody("Delta Exchange unreachable: " + e.getMessage())));
+            })
+            .timeout(Duration.ofSeconds(15), Mono.just(ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT)
+                .body(errorBody("Delta Exchange request timed out"))));
     }
 
     @GetMapping("/connection-status")
@@ -65,5 +107,12 @@ public class DeltaExchangeController {
         long userId = 1L;
         boolean hasCredentials = credentialRepo.findByUserIdAndIsTestnet(userId, testnet).isPresent();
         return ResponseEntity.ok(Map.of("hasCredentials", hasCredentials, "environment", testnet ? "testnet" : "production"));
+    }
+
+    private JsonNode errorBody(String message) {
+        ObjectNode node = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+        node.put("success", false);
+        node.put("error", message);
+        return node;
     }
 }

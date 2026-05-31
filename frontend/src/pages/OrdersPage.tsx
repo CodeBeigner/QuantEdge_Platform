@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { MaterialIcon } from '@/components/ui/MaterialIcon'
+import { api } from '@/services/api'
 import {
   deltaApi,
   createDeltaWebSocket,
@@ -164,10 +164,10 @@ export function OrdersPage() {
     [products, selectedSymbol],
   )
 
-  // Ticker
+  // Ticker via backend proxy
   const { data: ticker } = useQuery<DeltaTicker>({
     queryKey: ['delta-ticker', selectedSymbol],
-    queryFn: () => deltaApi.getTicker(selectedSymbol),
+    queryFn: () => api.getDeltaTicker(selectedSymbol).then((r: Record<string, unknown>) => (r as Record<string, unknown> | null)?.result as DeltaTicker),
     refetchInterval: 3000,
     enabled: !!selectedSymbol,
   })
@@ -219,7 +219,7 @@ export function OrdersPage() {
   // Fetch initial order book via REST
   useEffect(() => {
     if (!selectedProduct) return
-    deltaApi.getOrderBook(selectedProduct.symbol, 20).then(setOrderBook).catch(() => {})
+    deltaApi.getOrderBook(selectedProduct.symbol, 20).then(setOrderBook).catch(err => console.error('Failed to fetch order book:', err))
   }, [selectedProduct])
 
   // Place order mutation

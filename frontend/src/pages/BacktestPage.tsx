@@ -95,7 +95,7 @@ export function BacktestPage() {
   /* ── mutation ──────────────────────────────────────────────────── */
   const mutation = useMutation({
     mutationFn: () =>
-      api.runMultiTFBacktest({ initialCapital, slippageBps }),
+      api.runMultiTFBacktest({ symbol, initialCapital, slippageBps, startDate, endDate }),
     onSuccess: data => {
       if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
         addNotification({
@@ -493,7 +493,7 @@ export function BacktestPage() {
                           color: 'var(--on-surface)',
                         }}
                         labelFormatter={l => `Bar ${l}`}
-                        formatter={(value: any) => [fmtMoney(Number(value)), 'Equity']}
+                        formatter={(value) => [fmtMoney(Number(value)), 'Equity']}
                       />
                       <Area
                         type="monotone"

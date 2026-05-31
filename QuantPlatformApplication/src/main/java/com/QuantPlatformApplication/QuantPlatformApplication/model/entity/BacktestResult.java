@@ -11,7 +11,7 @@ import java.time.LocalDate;
  * JPA entity for backtest results mapped to the {@code backtest_results} table.
  *
  * <p>Stores per-backtest performance metrics including walk-forward validation
- * results (V11 migration) and transaction cost tracking (BUG 3 fix).
+ * results (V11 migration) and transaction cost tracking.
  */
 @Entity
 @Table(name = "backtest_results")

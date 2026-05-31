@@ -15,6 +15,7 @@ sequential retraining jobs.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import tempfile
@@ -22,6 +23,8 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 import joblib
+
+_log = logging.getLogger(__name__)
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -34,6 +37,7 @@ def _atomic_write_text(path: Path, text: str) -> None:
             f.write(text)
         os.replace(tmp, path)
     except Exception:
+        _log.exception("Failed to write %s", path)
         try:
             os.unlink(tmp)
         except FileNotFoundError:

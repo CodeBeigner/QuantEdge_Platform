@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { MaterialIcon } from '@/components/ui/MaterialIcon'
+import { api } from '@/services/api'
 import {
   deltaApi,
   createDeltaWebSocket,
@@ -195,14 +196,18 @@ function OrderBook({ book, ticker }: { book: DeltaOrderBook | null; ticker: Delt
   // Compute cumulative totals
   const asksWithTotal = useMemo(() => {
     const reversed = [...asks].reverse()
-    let cum = 0
-    const withTotals = reversed.map(l => { cum += l.size; return { ...l, total: cum } })
+    const withTotals = reversed.reduce<Array<OrderBookLevel & { total: number }>>((acc, l) => {
+      const prevTotal = acc.length > 0 ? acc[acc.length - 1].total : 0
+      return [...acc, { ...l, total: prevTotal + l.size }]
+    }, [])
     return withTotals.reverse()
   }, [asks])
 
   const bidsWithTotal = useMemo(() => {
-    let cum = 0
-    return bids.map(l => { cum += l.size; return { ...l, total: cum } })
+    return bids.reduce<Array<OrderBookLevel & { total: number }>>((acc, l) => {
+      const prevTotal = acc.length > 0 ? acc[acc.length - 1].total : 0
+      return [...acc, { ...l, total: prevTotal + l.size }]
+    }, [])
   }, [bids])
 
   return (
@@ -278,7 +283,7 @@ function RecentTrades({ trades }: { trades: DeltaTrade[] }) {
 }
 
 // ─── TradingView Chart ───
-function TradingChart({ symbol, productId }: { symbol: string; productId: number }) {
+function TradingChart({ symbol }: { symbol: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -330,7 +335,7 @@ function TradingChart({ symbol, productId }: { symbol: string; productId: number
         volRef.current?.setData(vd)
         chartRef.current.timeScale().fitContent()
       })
-      .catch(() => {})
+      .catch(err => console.error('Failed to fetch candles:', err))
   }, [symbol, tf])
 
   return (
@@ -744,24 +749,24 @@ export function TradingPage() {
   const [orderBook, setOrderBook] = useState<DeltaOrderBook | null>(null)
   const [recentTrades, setRecentTrades] = useState<DeltaTrade[]>([])
 
-  // Fetch products (public endpoint, no auth needed)
+  // Fetch products via backend proxy
   const { data: products = [] } = useQuery<DeltaProduct[]>({
     queryKey: ['delta-products-all'],
-    queryFn: () => deltaApi.getProducts(),
+    queryFn: () => api.getDeltaProducts().then(r => ((r as Record<string, unknown> | null)?.result ?? []) as DeltaProduct[]),
     staleTime: 60_000,
   })
 
-  // Fetch tickers (public endpoint, no auth needed)
+  // Fetch tickers via backend proxy
   const { data: tickers = [] } = useQuery<DeltaTicker[]>({
     queryKey: ['delta-tickers'],
-    queryFn: () => deltaApi.getTickers(),
+    queryFn: () => api.getDeltaTickers().then(r => ((r as Record<string, unknown> | null)?.result ?? []) as DeltaTicker[]),
     refetchInterval: 5000,
   })
 
   // Selected ticker
   const selectedTicker = useMemo(() => {
     if (!selectedProduct) return null
-    return tickers.find(t => t.symbol === selectedProduct.symbol) ?? null
+    return tickers.find((t: DeltaTicker) => t.symbol === selectedProduct.symbol) ?? null
   }, [selectedProduct, tickers])
 
   // Order book WS
@@ -777,38 +782,32 @@ export function TradingPage() {
   // Order book REST fallback
   useEffect(() => {
     if (!selectedProduct) return
-    deltaApi.getOrderBook(selectedProduct.symbol, 20).then(setOrderBook).catch(() => {})
+    deltaApi.getOrderBook(selectedProduct.symbol, 20).then(setOrderBook).catch(err => console.error('Failed to fetch order book (REST):', err))
   }, [selectedProduct])
 
   // Recent trades
   useEffect(() => {
     if (!selectedProduct) return
-    deltaApi.getRecentTrades(selectedProduct.symbol).then(setRecentTrades).catch(() => {})
+    deltaApi.getRecentTrades(selectedProduct.symbol).then(setRecentTrades).catch(err => console.error('Failed to fetch recent trades:', err))
     const iv = setInterval(() => {
-      deltaApi.getRecentTrades(selectedProduct.symbol).then(setRecentTrades).catch(() => {})
+      deltaApi.getRecentTrades(selectedProduct.symbol).then(setRecentTrades).catch(err => console.error('Failed to refresh recent trades:', err))
     }, 5000)
     return () => clearInterval(iv)
   }, [selectedProduct])
 
   // Order form wrapper (prompts to connect if not configured)
-  const OrderFormWrapper = () => {
-    if (!configured) {
-      return (
-        <div style={{ background: 'var(--surface-container-low)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%', justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
-          <MaterialIcon name="lock_outline" size={32} style={{ color: 'var(--outline)' } as any} />
-          <div style={{ fontSize: '0.875rem', color: 'var(--on-surface-variant)' }}>Connect Delta Exchange account to place orders.</div>
-          <button onClick={() => setSelectedProduct(null)} className="btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.8125rem' }}>Go Connect</button>
-        </div>
-      )
-    }
-    return <OrderForm symbol={selectedProduct!.symbol} ticker={selectedTicker} product={selectedProduct} />
-  }
+  const orderFormContent = !configured ? (
+    <div style={{ background: 'var(--surface-container-low)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%', justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
+      <MaterialIcon name="lock_outline" size={32} style={{ color: 'var(--outline)' }} />
+      <div style={{ fontSize: '0.875rem', color: 'var(--on-surface-variant)' }}>Connect Delta Exchange account to place orders.</div>
+      <button onClick={() => setSelectedProduct(null)} className="btn-primary" style={{ padding: '0.5rem 1rem', fontSize: '0.8125rem' }}>Go Connect</button>
+    </div>
+  ) : (
+    <OrderForm symbol={selectedProduct!.symbol} ticker={selectedTicker} product={selectedProduct} />
+  )
 
   // Bottom panel wrapper
-  const BottomPanelWrapper = () => {
-    if (!configured) return <div style={{ background: 'var(--surface-container-low)', padding: '2rem', textAlign: 'center', color: 'var(--outline)' }}>Connect account to view portfolio.</div>
-    return <BottomPanel />
-  }
+  const bottomPanelContent = !configured ? <div style={{ background: 'var(--surface-container-low)', padding: '2rem', textAlign: 'center', color: 'var(--outline)' }}>Connect account to view portfolio.</div> : <BottomPanel />
 
   // Trading view (product selected)
   if (selectedProduct) {
@@ -852,7 +851,7 @@ export function TradingPage() {
         {/* Main trading grid */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px 280px', gap: 0, height: 'calc(100vh - 320px)', minHeight: 400 }}>
           {/* Chart */}
-          <TradingChart symbol={selectedProduct.symbol} productId={selectedProduct.id} />
+          <TradingChart symbol={selectedProduct.symbol} />
 
           {/* Order Book + Recent Trades */}
           <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid rgba(66,71,84,0.15)', borderRight: '1px solid rgba(66,71,84,0.15)' }}>
@@ -871,11 +870,11 @@ export function TradingPage() {
           </div>
 
           {/* Order Form */}
-          <OrderFormWrapper />
+          {orderFormContent}
         </div>
 
         {/* Bottom panel */}
-        <BottomPanelWrapper />
+        {bottomPanelContent}
       </div>
     )
   }

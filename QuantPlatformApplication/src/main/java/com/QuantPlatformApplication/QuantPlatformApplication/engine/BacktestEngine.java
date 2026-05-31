@@ -17,7 +17,7 @@ import java.util.List;
  * Tracks: equity curve, positions, PnL, trades, transaction costs.
  * Calculates: Sharpe ratio, max drawdown, win rate, total return.
  *
- * BUG 3 FIX: Applies slippage (3bps default) to all BUY/SELL fills
+ * Applies slippage (3bps default) to all BUY/SELL fills
  * and tracks cumulative transaction costs as a metric.
  *
  * NOTE: This engine operates on daily close prices and does NOT model

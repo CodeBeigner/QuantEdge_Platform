@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import logging
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -9,6 +10,8 @@ import pandas as pd
 import psycopg2
 
 from .config import get_database_url
+
+_log = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -22,6 +25,7 @@ def connect() -> Iterator[psycopg2.extensions.connection]:
         yield conn
         conn.commit()
     except Exception:
+        _log.exception("Database write failed, rolling back")
         conn.rollback()
         raise
     finally:

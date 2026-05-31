@@ -8,13 +8,13 @@ type Tab = 'login' | 'register';
 export function AuthPage() {
   const { login, register, error, isLoading, isAuthenticated, clearError } = useAuthStore();
   const [tab, setTab] = useState<Tab>('login');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
   }
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
 
   const switchTab = (next: Tab) => {
     clearError();

@@ -35,8 +35,8 @@ import java.util.concurrent.CompletableFuture;
  * Key responsibility: convert between DB entities and engine domain models
  * so each layer stays decoupled.
  *
- * BUG 2 FIX: Strategy decisions (BUY/SELL with confidence >= threshold) are
- * now automatically converted to orders via OrderManagementService.
+ * Strategy decisions (BUY/SELL with confidence >= threshold) are
+ * automatically converted to orders via OrderManagementService.
  */
 @Slf4j
 @Service
@@ -168,7 +168,7 @@ public class StrategyService {
      *   <li>Convert Strategy entity → engine StrategyConfig</li>
      *   <li>Call StrategyExecutor.executeAsync() (runs on virtual thread)</li>
      *   <li>Map result → ExecutionResponse DTO</li>
-     *   <li>(BUG 2 FIX) If BUY/SELL with confidence >= threshold → place order</li>
+     *   <li>If BUY/SELL with confidence >= threshold → place order</li>
      * </ol>
      *
      * @param id strategy ID to execute
@@ -205,7 +205,7 @@ public class StrategyService {
 
             ExecutionResponse response = toExecutionResponse(entity, result);
 
-            // 5. BUG 2 FIX: Convert Decision → Order when conditions are met
+            // 5. Convert Decision → Order when conditions are met
             if (result.isSuccess() && result.getDecision() != null) {
                 Action action = result.getDecision().action();
                 double confidence = result.getDecision().confidence();

@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { api } from '@/services/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
-  Link2, FlaskConical, Play, ArrowRight, Activity, TrendingUp, TrendingDown,
+  Link2, FlaskConical, Play, ArrowRight, Activity,
 } from 'lucide-react';
 import type { SystemHealth, RiskConfig, Position } from '@/types';
 

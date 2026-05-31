@@ -68,6 +68,15 @@ public class DeltaExchangeClient {
             .timeout(Duration.ofSeconds(config.getTimeoutSeconds()));
     }
 
+    public Mono<JsonNode> getTickers(boolean testnet) {
+        String baseUrl = getBaseUrl(testnet);
+        return webClient.get()
+            .uri(baseUrl + "/v2/tickers")
+            .retrieve()
+            .bodyToMono(JsonNode.class)
+            .timeout(Duration.ofSeconds(config.getTimeoutSeconds()));
+    }
+
     public Mono<JsonNode> getOrderBook(int productId, int depth, boolean testnet) {
         String baseUrl = getBaseUrl(testnet);
         return webClient.get()

@@ -19,7 +19,7 @@ spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:5432/postgres
     username: ${DB_USER:postgres}
-    password: ${DB_PASS:Walktorem@12}
+    password: ${DB_PASS}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
@@ -28,7 +28,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate           # Flyway manages DDL — Hibernate only validates
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
@@ -40,9 +40,10 @@ spring:
     baseline-version: 0            # Run all migrations (V1, V2, ...)
     locations: classpath:db/migration
 
-  redis:
-    host: ${REDIS_HOST:localhost}
-    port: 6379
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: 6379
 
   task:
     scheduling:
@@ -50,7 +51,7 @@ spring:
         size: 5
 
 jwt:
-  secret: dGhpcyBpcyBhIHZlcnkgc2VjdXJlIHNlY3JldCBrZXkgZm9yIGp3dCBzaWduaW5n
+  secret: ${JWT_SECRET}
   expiration: 86400000
 
 # External API configuration
@@ -69,7 +70,7 @@ management:
         include: health,info,prometheus,metrics
   endpoint:
     health:
-      show-details: always
+      show-details: when-authorized
 
 # Anthropic Claude AI configuration
 anthropic:
@@ -77,8 +78,8 @@ anthropic:
 
 server:
   error:
-    include-message: always
-    include-stacktrace: on_param
+    include-message: never
+    include-stacktrace: never
 
 delta-exchange:
   testnet-base-url: https://cdn-ind.testnet.deltaex.org
@@ -89,7 +90,7 @@ delta-exchange:
   max-retries: 3
 
 encryption:
-  key: ${ENCRYPTION_KEY:default-key-change-in-production!!}
+  key: ${ENCRYPTION_KEY}
 
 telegram:
   bot-token: ${TELEGRAM_BOT_TOKEN:}

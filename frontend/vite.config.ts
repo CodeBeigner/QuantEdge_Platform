@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
+/** Dev-server proxy target (e.g. http://host.docker.internal:8080 when Vite runs in Docker). */
+const backendTarget = process.env.VITE_BACKEND_URL ?? 'http://localhost:8080'
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -13,16 +16,20 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
+      '/api/risk': {
+        target: 'http://localhost:5002',
+        changeOrigin: true,
+      },
       '/api': {
-        target: 'http://localhost:8080',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'http://localhost:8080',
+        target: backendTarget,
         ws: true,
       },
       '/actuator': {
-        target: 'http://localhost:8080',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/delta-testnet': {
