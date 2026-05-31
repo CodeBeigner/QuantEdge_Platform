@@ -1,10 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useKeyboard } from '@/hooks/useKeyboard';
-import { Toaster, toast } from 'sonner';
+import { Toaster } from 'sonner';
 
 import { useAuthStore } from '@/stores/authStore';
-import { useNotificationStore } from '@/stores/notificationStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { api } from '@/services/api';
 import type { FirmProfile } from '@/types';
@@ -25,10 +24,11 @@ import RiskPage from '@/pages/RiskPage';
 import SettingsPage from '@/pages/SettingsPage';
 import TradePage from '@/pages/TradePage';
 import TradeLogPage from '@/pages/TradeLogPage';
+import RiskDashboardPage from '@/pages/RiskDashboardPage';
 
 function AppLayout() {
   const { prices, connected } = useWebSocket();
-  const [firm, setFirm] = useState<FirmProfile | null>(null);
+  const [, setFirm] = useState<FirmProfile | null>(null);
   const [firmLoading, setFirmLoading] = useState(true);
   const [notifOpen, setNotifOpen] = useState(false);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
@@ -37,8 +37,7 @@ function AppLayout() {
   useKeyboard('mod+k', (e) => {
     e.preventDefault();
     setCmdPaletteOpen((p) => !p);
-  }, []);
-  const addNotification = useNotificationStore((s) => s.addNotification);
+  });
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -49,27 +48,8 @@ function AppLayout() {
       if (!f && location.pathname !== '/firm-setup') {
         navigate('/firm-setup', { replace: true });
       }
-    }).catch(() => setFirmLoading(false));
-  }, []);
-
-  const handleCeoCommand = useCallback(async (message: string) => {
-    try {
-      const result = await api.ceoBroadcast(message);
-      toast.success(`${result.agentName || 'Agent'} responded`, {
-        description: typeof result.response === 'string'
-          ? result.response.slice(0, 200)
-          : 'Response received',
-        duration: 8000,
-      });
-      addNotification({
-        type: 'info',
-        title: `CEO Command: ${message.slice(0, 50)}`,
-        message: typeof result.response === 'string' ? result.response.slice(0, 150) : 'Response received',
-      });
-    } catch (err) {
-      toast.error('Command failed', { description: (err as Error).message });
-    }
-  }, [addNotification]);
+    }).catch(err => { console.error('Failed to fetch firm profile:', err); setFirmLoading(false); });
+  }, [location.pathname, navigate]);
 
   if (firmLoading) {
     return (
@@ -161,6 +141,7 @@ export default function App() {
           <Route path="/paper-trading" element={<PaperTradingPage />} />
           <Route path="/trade-log" element={<TradeLogPage />} />
           <Route path="/risk" element={<RiskPage />} />
+          <Route path="/risk-dashboard" element={<RiskDashboardPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

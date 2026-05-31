@@ -52,7 +52,7 @@ app = FastAPI(title="QuantEdge ML Service", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -85,7 +85,7 @@ models: dict[str, SignalModel] = {}
 lstm_models: dict[str, LSTMSignalModel] = {}
 
 MODEL_DIR = "models/"
-BACKEND_URL = "http://localhost:8080/api/v1"
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8080/api/v1").rstrip("/")
 
 ML_MODEL_DIR = os.environ.get("ML_MODEL_DIR", MODEL_DIR)
 _registry = ModelRegistry(base_dir=ML_MODEL_DIR)
@@ -226,7 +226,8 @@ async def optimize(req: OptimizeRequest):
             rets = close.pct_change().dropna().values
             all_returns.append(rets)
             valid_symbols.append(symbol)
-        except Exception:
+        except Exception as exc:
+            log.warning("Failed to fetch data for %s: %s", symbol, exc)
             continue
 
     if len(valid_symbols) < 2:
@@ -263,7 +264,8 @@ async def optimize_robust(req: OptimizeRequest):
             rets = close.pct_change().dropna().values
             all_returns.append(rets)
             valid_symbols.append(symbol)
-        except Exception:
+        except Exception as exc:
+            log.warning("Failed to fetch data for %s: %s", symbol, exc)
             continue
 
     if len(valid_symbols) < 2:
@@ -292,7 +294,8 @@ async def risk_parity(req: OptimizeRequest):
             rets = close.pct_change().dropna().values
             all_returns.append(rets)
             valid_symbols.append(symbol)
-        except Exception:
+        except Exception as exc:
+            log.warning("Failed to fetch data for %s: %s", symbol, exc)
             continue
 
     if len(valid_symbols) < 2:

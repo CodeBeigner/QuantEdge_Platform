@@ -4,10 +4,14 @@ Portfolio Optimizer — Markowitz Mean-Variance Optimization
 Implements efficient frontier calculation and optimal
 portfolio allocation across multiple assets.
 """
+import logging
+
 import numpy as np
 from scipy.optimize import minimize
 from sklearn.covariance import LedoitWolf
 from typing import List
+
+_log = logging.getLogger(__name__)
 
 
 def optimize_portfolio(
@@ -96,8 +100,8 @@ def compute_efficient_frontier(
                 "return": result["expected_return"],
                 "volatility": result["volatility"],
             })
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("Failed to compute frontier point at return=%s: %s", tr, exc)
 
     return frontier
 

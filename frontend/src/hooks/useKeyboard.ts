@@ -4,7 +4,7 @@ type KeyHandler = (e: KeyboardEvent) => void;
 
 const handlers = new Map<string, Set<KeyHandler>>();
 
-export function useKeyboard(key: string, handler: KeyHandler, deps: unknown[] = []) {
+export function useKeyboard(key: string, handler: KeyHandler) {
   useEffect(() => {
     const normalizedKey = key.toLowerCase();
     if (!handlers.has(normalizedKey)) {
@@ -15,7 +15,7 @@ export function useKeyboard(key: string, handler: KeyHandler, deps: unknown[] = 
     return () => {
       handlers.get(normalizedKey)?.delete(handler);
     };
-  }, deps);
+  }, [handler, key]);
 }
 
 if (typeof window !== 'undefined') {

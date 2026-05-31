@@ -14,10 +14,6 @@ const PRODUCTION_PROXY = '/delta-prod';
 const TESTNET_WS = 'wss://cdn-ind.testnet.deltaex.org/v2/ws';
 const PRODUCTION_WS = 'wss://api.india.delta.exchange/v2/ws';
 
-// Real API paths (needed for HMAC signature calculation)
-const TESTNET_REAL = 'https://cdn-ind.testnet.deltaex.org';
-const PRODUCTION_REAL = 'https://api.india.delta.exchange';
-
 function getConfig() {
   try {
     return JSON.parse(localStorage.getItem('delta_exchange_config') || '{}');

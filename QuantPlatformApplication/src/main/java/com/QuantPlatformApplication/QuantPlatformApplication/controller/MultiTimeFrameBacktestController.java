@@ -55,9 +55,15 @@ public class MultiTimeFrameBacktestController {
         try {
             candles = candleSource.fetch(symbol, timeframe, startDate, endDate);
         } catch (EmptyCandleRangeException e) {
-            log.warn("Empty candle range: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(Map.of("error", "no_data", "message", e.getMessage()));
+            log.warn("No cached data for {}-{}, falling back to Binance REST API.", symbol, timeframe);
+            try {
+                candles = binanceClient.fetchCandles(symbol, timeframe, startDate, endDate);
+            } catch (Exception binanceErr) {
+                log.error("Binance fallback also failed", binanceErr);
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "no_data",
+                        "message", "No cached data for " + symbol + " and Binance API is unreachable. Seed data first."));
+            }
         }
 
         log.info("Running backtest with {} {} candles for {}, ${} capital, {} bps slippage",

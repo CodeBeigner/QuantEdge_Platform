@@ -24,7 +24,7 @@ import java.util.concurrent.ScheduledFuture;
  * Manages trading agent lifecycle: CRUD + cron-based execution scheduling.
  * Active agents execute their linked strategy on the configured cron.
  *
- * <p>Includes risk gate (BUG 1 fix) and AI role management.
+ * <p>Includes risk gate and AI role management.
  */
 @Slf4j
 @Service

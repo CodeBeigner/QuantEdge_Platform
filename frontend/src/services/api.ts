@@ -205,6 +205,13 @@ export const api = {
   checkPositionLimits: () => get<Record<string, unknown>>('/risk/positions'),
   getPortfolioRisk: () => get<Record<string, unknown>>('/risk/portfolio'),
 
+  // Risk Dashboard (Pillar C)
+  getRiskStatus: () => request<Record<string, unknown>>('/api/risk/status', { headers: headers() }),
+  getRiskPortfolio: () => request<Record<string, unknown>>('/api/risk/portfolio', { headers: headers() }),
+  getRiskSignals: () => request<Record<string, unknown>>('/api/risk/signals', { headers: headers() }),
+  getRiskOpportunities: () => request<Record<string, unknown>>('/api/risk/opportunities', { headers: headers() }),
+  getBudgetStatus: () => request<Record<string, unknown>>('/api/budget/status', { headers: headers() }),
+
   // Alerts
   getAlerts: () => get<Alert[]>('/alerts'),
   getUnacknowledgedAlerts: () => get<Alert[]>('/alerts/unacknowledged'),
@@ -285,13 +292,16 @@ export const api = {
   // === Phase 1-4 APIs ===
 
   getDeltaProducts: (testnet = true) =>
-    request<any>(`${API_BASE}/delta/products?testnet=${testnet}`, { headers: headers() }),
+    request<Record<string, unknown>>(`${API_BASE}/delta/products?testnet=${testnet}`, { headers: headers() }),
 
   getDeltaTicker: (symbol: string, testnet = true) =>
-    request<any>(`${API_BASE}/delta/ticker/${symbol}?testnet=${testnet}`, { headers: headers() }),
+    request<Record<string, unknown>>(`${API_BASE}/delta/ticker/${symbol}?testnet=${testnet}`, { headers: headers() }),
+
+  getDeltaTickers: (testnet = true) =>
+    request<Record<string, unknown>>(`${API_BASE}/delta/tickers?testnet=${testnet}`, { headers: headers() }),
 
   getDeltaOrderBook: (productId: number, depth = 20, testnet = true) =>
-    request<any>(`${API_BASE}/delta/orderbook/${productId}?depth=${depth}&testnet=${testnet}`, { headers: headers() }),
+    request<Record<string, unknown>>(`${API_BASE}/delta/orderbook/${productId}?depth=${depth}&testnet=${testnet}`, { headers: headers() }),
 
   saveDeltaCredentials: (apiKey: string, apiSecret: string, testnet = true) =>
     request<{ status: string; environment: string }>(`${API_BASE}/delta/credentials`, {
@@ -328,7 +338,7 @@ export const api = {
   getTradeLog: (tradeId: string) =>
     request<TradeLog>(`${API_BASE}/trade-logs/${tradeId}`, { headers: headers() }),
 
-  runMultiTFBacktest: (config: { initialCapital?: number; slippageBps?: number }) =>
+  runMultiTFBacktest: (config: { symbol?: string; initialCapital?: number; slippageBps?: number; startDate?: string; endDate?: string }) =>
     request<MultiTFBacktestResult>(`${API_BASE}/backtests/multi-tf`, {
       method: 'POST', headers: headers(),
       body: JSON.stringify(config),

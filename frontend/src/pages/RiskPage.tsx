@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Shield, Check, X, Loader2 } from 'lucide-react';
+import { Shield, Loader2 } from 'lucide-react';
 import { api } from '@/services/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { RiskConfig, SystemHealth } from '@/types';
@@ -27,7 +27,6 @@ function StatusBanner({ health, riskConfig }: { health?: SystemHealth; riskConfi
   const balance = account?.balance ?? 0;
   const peakEquity = account?.peakEquity ?? 0;
 
-  const dailyLossLimit = riskConfig?.dailyLossHaltPct ?? 5;
   const maxDrawdownLimit = riskConfig?.maxDrawdownPct ?? 15;
 
   // Drawdown: (peak - current) / peak * 100

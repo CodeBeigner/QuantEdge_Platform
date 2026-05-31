@@ -86,14 +86,10 @@ function fmtPrice(n: number, symbol: Symbol): string {
 
 /* ─── Shared Inline Styles ─── */
 const cardBg = '#1a2235';
-const cardBgHover = '#1e2740';
 const monoFont = 'var(--font-mono)';
 const bodyFont = 'var(--font-body)';
 const textMuted = 'var(--outline)';
 const textPrimary = 'var(--on-surface)';
-const green = 'var(--tertiary)';
-const red = 'var(--error)';
-const borderColor = 'var(--outline-variant)';
 
 /* ───────────────────────────────────────────────────────────────────────────────
    CHART COMPONENT
@@ -101,7 +97,9 @@ const borderColor = 'var(--outline-variant)';
 function CandlestickChart({ symbol, timeframe }: { symbol: Symbol; timeframe: Timeframe }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const candleSeriesRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const volumeSeriesRef = useRef<any>(null);
 
   const [loading, setLoading] = useState(true);
@@ -181,47 +179,52 @@ function CandlestickChart({ symbol, timeframe }: { symbol: Symbol; timeframe: Ti
     if (!candleSeriesRef.current || !volumeSeriesRef.current) return;
 
     let cancelled = false;
-    setLoading(true);
-    setError(null);
 
-    const binanceSymbol = toBinanceSymbol(symbol);
-    const days = daysForTimeframe[timeframe];
+    const fetchData = () => {
+      setLoading(true);
+      setError(null);
 
-    api.getCandles(binanceSymbol, timeframe, days)
-      .then((data) => {
-        if (cancelled) return;
-        if (!data || data.length === 0) {
-          setError('No candle data returned');
+      const binanceSymbol = toBinanceSymbol(symbol);
+      const days = daysForTimeframe[timeframe];
+
+      api.getCandles(binanceSymbol, timeframe, days)
+        .then((data) => {
+          if (cancelled) return;
+          if (!data || data.length === 0) {
+            setError('No candle data returned');
+            setLoading(false);
+            return;
+          }
+          candleSeriesRef.current?.setData(
+            data.map((d) => ({
+              time: d.time as Time,
+              open: d.open,
+              high: d.high,
+              low: d.low,
+              close: d.close,
+            }))
+          );
+          volumeSeriesRef.current?.setData(
+            data.map((d) => ({
+              time: d.time as Time,
+              value: d.volume,
+              color: d.close >= d.open
+                ? 'rgba(0, 228, 121, 0.3)'
+                : 'rgba(255, 180, 171, 0.3)',
+            }))
+          );
+          chartRef.current?.timeScale().fitContent();
           setLoading(false);
-          return;
-        }
-        candleSeriesRef.current?.setData(
-          data.map((d) => ({
-            time: d.time as Time,
-            open: d.open,
-            high: d.high,
-            low: d.low,
-            close: d.close,
-          }))
-        );
-        volumeSeriesRef.current?.setData(
-          data.map((d) => ({
-            time: d.time as Time,
-            value: d.volume,
-            color: d.close >= d.open
-              ? 'rgba(0, 228, 121, 0.3)'
-              : 'rgba(255, 180, 171, 0.3)',
-          }))
-        );
-        chartRef.current?.timeScale().fitContent();
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error('Failed to fetch candle data:', err);
-        setError('Chart data unavailable');
-        setLoading(false);
-      });
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          console.error('Failed to fetch candle data:', err);
+          setError('Chart data unavailable');
+          setLoading(false);
+        });
+    };
+
+    fetchData();
 
     return () => { cancelled = true; };
   }, [symbol, timeframe]);

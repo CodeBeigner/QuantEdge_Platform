@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Loader2, Trash2, Send, Wifi, WifiOff } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Trash2, Send, Wifi } from 'lucide-react';
 import { api } from '@/services/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import type { RiskConfig, SystemHealth, SystemVersion, DeltaConnectionStatus } from '@/types';

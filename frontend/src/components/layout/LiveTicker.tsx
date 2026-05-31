@@ -35,7 +35,7 @@ function isMarketOpen(tz: string, openH: number, closeH: number) {
 const CRYPTO_SYMBOLS = ['BTCUSD', 'ETHUSD', 'SOLUSD', 'XRPUSD', 'AVAXUSD'];
 
 export default function LiveTicker({ prices, connected }: LiveTickerProps) {
-  const [now, setNow] = useState(new Date());
+  const [, setNow] = useState(new Date());
   const [deltaTickers, setDeltaTickers] = useState<DeltaTicker[]>([]);
 
   // Update clock every second
@@ -47,7 +47,7 @@ export default function LiveTicker({ prices, connected }: LiveTickerProps) {
   // Fetch Delta Exchange tickers for crypto prices
   useEffect(() => {
     const fetchTickers = () => {
-      deltaApi.getTickers().then(t => setDeltaTickers(t)).catch(() => {});
+      deltaApi.getTickers().then(t => setDeltaTickers(t)).catch(err => console.error('Failed to fetch tickers:', err));
     };
     fetchTickers();
     const iv = setInterval(fetchTickers, 5000);
