@@ -118,6 +118,35 @@ async def risk_opportunities():
     }
 
 
+# Pillar B endpoints
+@app.get("/api/research/summary/{symbol}")
+async def research_summary(symbol: str):
+    return {
+        "symbol": symbol,
+        "fundamental": None,
+        "earnings": None,
+        "sentiment": None,
+        "sector": None,
+        "note": "Research agents require DEEPSEEK_API_KEY to generate reports. Set DEEPSEEK_API_KEY in .env.",
+    }
+
+
+@app.get("/api/prediction/brier")
+async def prediction_brier():
+    return {
+        "scores": {},
+        "total_predictions": 0,
+        "note": "Brier scores appear after predictions are recorded.",
+    }
+
+
+@app.get("/api/budget/status")
+async def budget_status():
+    from llm.budget import LLMBudget
+    budget = LLMBudget()
+    return budget.get_status()
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=5002)

@@ -210,6 +210,7 @@ export const api = {
   getRiskPortfolio: () => request<Record<string, unknown>>('/api/risk/portfolio', { headers: headers() }),
   getRiskSignals: () => request<Record<string, unknown>>('/api/risk/signals', { headers: headers() }),
   getRiskOpportunities: () => request<Record<string, unknown>>('/api/risk/opportunities', { headers: headers() }),
+  getBudgetStatus: () => request<Record<string, unknown>>('/api/budget/status', { headers: headers() }),
 
   // Alerts
   getAlerts: () => get<Alert[]>('/alerts'),

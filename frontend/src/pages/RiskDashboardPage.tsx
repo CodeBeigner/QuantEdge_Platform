@@ -42,16 +42,18 @@ export default function RiskDashboardPage() {
     asset: string; asset_type: string; price: number; change_24h_pct: number;
     volume_24h: number; signal_strength: number; reasons: string[];
   }>>([]);
+  const [budget, setBudget] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const [s, p, sig, opps] = await Promise.all([
+      const [s, p, sig, opps, b] = await Promise.all([
         api.getRiskStatus(),
         api.getRiskPortfolio(),
         api.getRiskSignals(),
         api.getRiskOpportunities(),
+        api.getBudgetStatus(),
       ]);
       setStatus(s as unknown as RiskStatus);
       setPortfolio(p as unknown as PortfolioState);
@@ -60,6 +62,7 @@ export default function RiskDashboardPage() {
         asset: string; asset_type: string; price: number; change_24h_pct: number;
         volume_24h: number; signal_strength: number; reasons: string[];
       }> ?? []);
+      setBudget(b as unknown as Record<string, unknown>);
       setError(null);
     } catch (err) {
       setError('Risk API unreachable — start with: python3 services/api.py');
@@ -92,6 +95,18 @@ export default function RiskDashboardPage() {
         }}>
           <MaterialIcon name={status.live_trading ? 'warning' : 'science'} size={16} />
           {modeBanner.text}
+        </div>
+      )}
+
+      {budget && (
+        <div style={{
+          display: 'flex', gap: '1rem', marginBottom: '1rem',
+          fontSize: '0.75rem', color: 'var(--outline)',
+          background: 'var(--surface-container-low)', borderRadius: 8, padding: '0.5rem 1rem',
+        }}>
+          <span>💰 LLM Budget: <strong style={{color: 'var(--on-surface)'}}>${(budget.total_spent_usd as number)?.toFixed(4)}</strong> / <strong>${(budget.daily_budget_usd as number)?.toFixed(2)}</strong></span>
+          <span style={{color: 'var(--outline)'}}>|</span>
+          <span>Remaining: <strong style={{color: (budget.remaining_usd as number) > 0 ? '#00e479' : '#c9522e'}}>${(budget.remaining_usd as number)?.toFixed(4)}</strong></span>
         </div>
       )}
 
