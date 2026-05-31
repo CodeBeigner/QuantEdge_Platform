@@ -28,6 +28,10 @@ export default defineConfig({
         target: 'http://localhost:5006',
         changeOrigin: true,
       },
+      '/api/stacking': {
+        target: 'http://localhost:5008',
+        changeOrigin: true,
+      },
       '/infrastructure': {
         target: 'http://localhost:5007',
         changeOrigin: true,
