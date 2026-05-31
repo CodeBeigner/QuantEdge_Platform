@@ -24,6 +24,10 @@ export default defineConfig({
         target: 'http://localhost:5005',
         changeOrigin: true,
       },
+      '/api/classifier': {
+        target: 'http://localhost:5006',
+        changeOrigin: true,
+      },
       '/api': {
         target: backendTarget,
         changeOrigin: true,
