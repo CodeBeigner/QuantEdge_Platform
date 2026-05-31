@@ -5,7 +5,10 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, List, Optional
+
+if TYPE_CHECKING:
+    from services.risk.config import SizedOrder
 
 
 @dataclass
@@ -39,7 +42,7 @@ class OrderResult:
 
 class ExecutionProvider(ABC):
     @abstractmethod
-    async def submit_order(self, order) -> OrderResult: ...
+    async def submit_order(self, order: SizedOrder) -> OrderResult: ...
     @abstractmethod
     async def cancel_order(self, order_id: str) -> bool: ...
     @abstractmethod

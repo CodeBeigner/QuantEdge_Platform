@@ -1,7 +1,5 @@
 """Shared test fixtures for Pillar C tests."""
-import os
 import tempfile
-from pathlib import Path
 
 import pytest
 
