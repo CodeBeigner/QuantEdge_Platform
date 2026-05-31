@@ -47,14 +47,18 @@ def validate_order(
             portfolio.nav,
             config.kelly_fraction,
         )
+        if position_size <= 0:
+            failures.append("kelly_sizing: computed zero or negative size")
 
-    if position_size <= 0:
-        failures.append("kelly_sizing: computed zero or negative size")
-
+    # 3. Position limit: single position <= max_pct of NAV
     max_single = config.max_position_pct * portfolio.nav
     if position_size > max_single:
-        position_size = max_single
+        failures.append(
+            f"position_limit: ${position_size:,.0f} exceeds "
+            f"max ${max_single:,.0f} ({config.max_position_pct:.0%} NAV)"
+        )
 
+    # 4. Exposure check: new + existing <= max total exposure
     new_exposure = position_size
     total_exposure_after = portfolio.total_exposure + new_exposure
     max_exposure = config.max_total_exposure * portfolio.nav

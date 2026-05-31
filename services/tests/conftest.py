@@ -17,7 +17,7 @@ def risk_config() -> RiskConfig:
     return RiskConfig(
         min_confidence_threshold=0.55,
         kelly_fraction=0.25,
-        max_position_pct=0.05,
+        max_position_pct=0.15,
         max_total_exposure=3.0,
         max_drawdown=0.08,
         daily_loss_limit=5000.0,

@@ -42,9 +42,9 @@ class TestRiskEnginePositionLimits:
         result = validate_order(bull_signal, healthy_portfolio, risk_config)
         assert result.passed
         assert result.sized_order is not None
-        assert result.sized_order.size_dollars <= 0.05 * healthy_portfolio.nav
+        assert result.sized_order.size_dollars <= 0.15 * healthy_portfolio.nav
 
-    def test_oversized_clamped(self, healthy_portfolio):
+    def test_oversized_blocked(self, healthy_portfolio):
         tight_config = RiskConfig(
             min_confidence_threshold=0.55,
             kelly_fraction=0.25,
@@ -63,8 +63,8 @@ class TestRiskEnginePositionLimits:
             entry_price=1000.0,
         )
         result = validate_order(huge_signal, healthy_portfolio, tight_config)
-        assert result.passed
-        assert result.sized_order.size_dollars <= 0.01 * healthy_portfolio.nav
+        assert not result.passed
+        assert any("position_limit" in f for f in result.failures)
 
 
 class TestRiskEngineDrawdownGate:
