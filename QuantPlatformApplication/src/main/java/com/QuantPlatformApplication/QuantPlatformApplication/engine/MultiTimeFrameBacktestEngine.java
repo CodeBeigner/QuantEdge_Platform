@@ -38,8 +38,8 @@ public class MultiTimeFrameBacktestEngine {
     // of up to 500 15m candles. With 500 15m candles: 500/16 = 31 4h candles (not enough for 50).
     // So 4h indicators will be null until we have enough. We still evaluate if 15m/1h are available.
     // We require at least 64 candles (4 * 16) before starting to evaluate.
-    private static final int MIN_CANDLES_BEFORE_EVAL = 64;
-    private static final int MAX_WINDOW_SIZE = 500;
+    private static final int MIN_CANDLES_BEFORE_EVAL = 960;
+    private static final int MAX_WINDOW_SIZE = 960;
     private static final int EVAL_INTERVAL = 4; // evaluate every 4th candle (1 hour equivalent)
     private static final int FUNDING_INTERVAL = 32; // every 32 candles = 8 hours of 15m
 

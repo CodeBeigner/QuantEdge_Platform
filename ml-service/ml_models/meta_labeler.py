@@ -15,7 +15,11 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from xgboost import XGBClassifier
+try:
+    from xgboost import XGBClassifier
+except Exception:
+    XGBClassifier = None
+    logging.getLogger("ml.meta_labeler").warning("xgboost not available (missing libomp)")
 
 log = logging.getLogger("ml.meta_labeler")
 
@@ -39,6 +43,9 @@ class MetaLabeler:
         n_kept = int(mask.sum())
         if n_kept < 50:
             raise ValueError(f"not enough binary labels ({n_kept}); need >= 50")
+
+        if XGBClassifier is None:
+            raise RuntimeError("xgboost not available (missing libomp). Install: brew install libomp")
 
         frame = df.loc[mask].copy()
         X = frame[self.feature_cols]

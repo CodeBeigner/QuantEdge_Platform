@@ -20,17 +20,37 @@ export default defineConfig({
         target: 'http://localhost:5002',
         changeOrigin: true,
       },
+      '/api/budget': {
+        target: 'http://localhost:5002',
+        changeOrigin: true,
+      },
+      '/api/research': {
+        target: 'http://localhost:5002',
+        changeOrigin: true,
+      },
+      '/api/prediction': {
+        target: 'http://localhost:5002',
+        changeOrigin: true,
+      },
       '/api/calmar': {
         target: 'http://localhost:5005',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/api/classifier': {
         target: 'http://localhost:5006',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/api/stacking': {
         target: 'http://localhost:5008',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/api/v1/ml': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/v1\/ml/, ''),
       },
       '/infrastructure': {
         target: 'http://localhost:5007',

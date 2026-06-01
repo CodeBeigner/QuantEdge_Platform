@@ -27,3 +27,8 @@ async def health():
 @app.get("/infrastructure/latency-report")
 async def get_latency_report():
     return latency_report()
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5007)

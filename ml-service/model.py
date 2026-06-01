@@ -9,9 +9,14 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import joblib
+import logging
 import numpy as np
 import pandas as pd
-from xgboost import XGBClassifier
+try:
+    from xgboost import XGBClassifier
+except Exception:
+    XGBClassifier = None
+    logging.getLogger("ml.model").warning("xgboost not available (missing libomp)")
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from feature_engine import compute_features, FEATURE_COLS
@@ -56,6 +61,9 @@ class SignalModel:
 
         X = featured[FEATURE_COLS].values
         y = featured['target'].values
+
+        if XGBClassifier is None:
+            return {"error": "xgboost not available (missing libomp). Install: brew install libomp"}
 
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, shuffle=False  # Time-ordered split
@@ -190,6 +198,9 @@ class SignalModel:
             X_train, y_train = X[:train_end], y[:train_end]
             X_test, y_test = X[test_start:test_end], y[test_start:test_end]
             fold_returns = returns[test_start:test_end]
+
+            if XGBClassifier is None:
+                return {"error": "xgboost not available (missing libomp). Install: brew install libomp"}
 
             clf = XGBClassifier(
                 n_estimators=XGBOOST_N_ESTIMATORS,

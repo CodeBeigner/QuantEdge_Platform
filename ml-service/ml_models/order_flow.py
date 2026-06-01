@@ -19,7 +19,11 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from lightgbm import LGBMClassifier
+try:
+    from lightgbm import LGBMClassifier
+except Exception:
+    LGBMClassifier = None
+    logging.getLogger("ml.order_flow").warning("lightgbm not available (missing libomp)")
 
 log = logging.getLogger("ml.order_flow")
 
@@ -91,6 +95,9 @@ class OrderFlowModel:
 
         if len(X) < 50:
             raise ValueError(f"not enough rows ({len(X)}); need >= 50")
+
+        if LGBMClassifier is None:
+            raise RuntimeError("lightgbm not available (missing libomp). Install: brew install libomp")
 
         self._model = LGBMClassifier(
             n_estimators=self.n_estimators,

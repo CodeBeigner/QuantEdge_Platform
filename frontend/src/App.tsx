@@ -45,11 +45,8 @@ function AppLayout() {
     api.getFirm().then((f) => {
       setFirm(f);
       setFirmLoading(false);
-      if (!f && location.pathname !== '/firm-setup') {
-        navigate('/firm-setup', { replace: true });
-      }
     }).catch(err => { console.error('Failed to fetch firm profile:', err); setFirmLoading(false); });
-  }, [location.pathname, navigate]);
+  }, []);
 
   if (firmLoading) {
     return (

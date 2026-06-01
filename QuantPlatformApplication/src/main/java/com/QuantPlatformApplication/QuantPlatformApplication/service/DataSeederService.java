@@ -1,11 +1,14 @@
 package com.QuantPlatformApplication.QuantPlatformApplication.service;
 
 import com.QuantPlatformApplication.QuantPlatformApplication.engine.model.ModelType;
+import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.AgentRole;
 import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.MarketDataEntity;
 import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.Strategy;
+import com.QuantPlatformApplication.QuantPlatformApplication.model.entity.TradingAgent;
 import java.math.BigDecimal;
 import com.QuantPlatformApplication.QuantPlatformApplication.repository.MarketDataRepository;
 import com.QuantPlatformApplication.QuantPlatformApplication.repository.StrategyRepository;
+import com.QuantPlatformApplication.QuantPlatformApplication.repository.TradingAgentRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
@@ -28,17 +31,21 @@ public class DataSeederService implements CommandLineRunner {
 
     private final MarketDataRepository marketDataRepo;
     private final StrategyRepository strategyRepo;
+    private final TradingAgentRepository agentRepo;
 
     public DataSeederService(MarketDataRepository marketDataRepo,
-            StrategyRepository strategyRepo) {
+            StrategyRepository strategyRepo,
+            TradingAgentRepository agentRepo) {
         this.marketDataRepo = marketDataRepo;
         this.strategyRepo = strategyRepo;
+        this.agentRepo = agentRepo;
     }
 
     @Override
     public void run(String... args) {
         seedMarketData();
         seedStrategies();
+        seedAgents();
     }
 
     private void seedMarketData() {
@@ -123,8 +130,71 @@ public class DataSeederService implements CommandLineRunner {
                 150_000.0, 1.0, 12_000.0);
         createStrategy("Multi-Signal Regime", "SPY", ModelType.REGIME,
                 250_000.0, 1.0, 20_000.0);
+        createStrategy("BTC Trend Continuation", "BTCUSD", ModelType.TREND_CONTINUATION,
+                500.0, 1.0, 25.0);
+        createStrategy("ETH Mean Reversion", "ETHUSD", ModelType.MEAN_REVERSION,
+                500.0, 1.0, 25.0);
+        createStrategy("BTC Funding Sentiment", "BTCUSD", ModelType.FUNDING_SENTIMENT,
+                500.0, 1.0, 25.0);
 
         log.info("Seeded 5 default strategies");
+    }
+
+    private void seedAgents() {
+        if (agentRepo.count() > 0) {
+            log.info("Agents already exist — skipping seed");
+            return;
+        }
+
+        log.info("Seeding default AI trading agents...");
+
+        ensureStrategy("BTC Trend Continuation", "BTCUSD", ModelType.TREND_CONTINUATION, 500.0);
+        ensureStrategy("ETH Mean Reversion", "ETHUSD", ModelType.MEAN_REVERSION, 500.0);
+        ensureStrategy("BTC Funding Sentiment", "BTCUSD", ModelType.FUNDING_SENTIMENT, 500.0);
+
+        List<Strategy> strategies = strategyRepo.findAll();
+
+        Strategy trendStrategy = strategies.stream()
+            .filter(s -> s.getModelType() == ModelType.TREND_CONTINUATION).findFirst().orElse(strategies.get(0));
+        Strategy meanRevStrategy = strategies.stream()
+            .filter(s -> s.getModelType() == ModelType.MEAN_REVERSION).findFirst().orElse(strategies.get(0));
+        Strategy momStrategy = strategies.stream()
+            .filter(s -> s.getModelType() == ModelType.MOMENTUM).findFirst().orElse(strategies.get(0));
+
+        createAgent("Alpha Seeker", trendStrategy.getId(), AgentRole.QUANT_RESEARCHER,
+            "Trend Continuation", "#00e479", "AS");
+        createAgent("Risk Sentinel", meanRevStrategy.getId(), AgentRole.RISK_ANALYST,
+            "Mean Reversion", "#ef4444", "RS");
+        createAgent("Market Scout", momStrategy.getId(), AgentRole.MARKET_REGIME_ANALYST,
+            "Momentum", "#3b82f6", "MS");
+
+        log.info("Seeded 3 default AI trading agents");
+    }
+
+    private void ensureStrategy(String name, String symbol, ModelType type, double cash) {
+        if (strategyRepo.findByModelType(type).isEmpty()) {
+            createStrategy(name, symbol, type, cash, 1.0, cash * 0.05);
+        }
+    }
+
+    private void createAgent(String name, Long strategyId, AgentRole role,
+            String personaName, String personaColor, String personaInitials) {
+        TradingAgent agent = TradingAgent.builder()
+            .name(name)
+            .strategyId(strategyId)
+            .cronExpression("0 */5 * * * *")
+            .active(false)
+            .agentRole(role)
+            .lifecycleState("CREATED")
+            .personaName(personaName)
+            .personaColor(personaColor)
+            .personaInitials(personaInitials)
+            .totalExecutions(0)
+            .successfulExecutions(0)
+            .createdAt(Instant.now())
+            .updatedAt(Instant.now())
+            .build();
+        agentRepo.save(agent);
     }
 
     private void createStrategy(String name, String symbol, ModelType type,
